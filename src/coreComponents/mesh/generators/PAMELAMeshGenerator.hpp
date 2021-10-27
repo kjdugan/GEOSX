@@ -56,9 +56,9 @@ public:
   {
     constexpr static char const * filePathString() { return "file"; }
     constexpr static char const * scaleString() { return "scale"; }
+    constexpr static char const * translateString() { return "translate"; }
     constexpr static char const * fieldsToImportString() { return "fieldsToImport"; }
     constexpr static char const * fieldNamesInGEOSXString() { return "fieldNamesInGEOSX"; }
-    constexpr static char const * reverseZString() { return "reverseZ"; }
   };
 /// @endcond
 
@@ -97,13 +97,13 @@ private:
   Path m_filePath;
 
   /// Scale factor that will be applied to the point coordinates
-  real64 m_scale;
+  R1Tensor m_scale;
+
+  /// Translation vector that will be applied to the point coordinates (prior to scaling)
+  R1Tensor m_translate;
 
   /// String array of the GEOSX user declared fields
   string_array m_fieldNamesInGEOSX;
-
-  /// z pointing direction flag, 0 (default) is upward, 1 is downward
-  integer m_isZReverse;
 
   /// Map of cell block (subregion) names to PAMELA region names
   std::unordered_map< string, string > m_cellBlockRegions;

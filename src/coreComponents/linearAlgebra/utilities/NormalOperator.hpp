@@ -15,8 +15,8 @@
 /**
  * @file NormalOperator.hpp
  */
-#ifndef GEOSX_LINEARALGEBRA_NORMALOPERATOR_HPP_
-#define GEOSX_LINEARALGEBRA_NORMALOPERATOR_HPP_
+#ifndef GEOSX_LINEARALGEBRA_UTILITIES_NORMALOPERATOR_HPP_
+#define GEOSX_LINEARALGEBRA_UTILITIES_NORMALOPERATOR_HPP_
 
 #include "common/LinearOperator.hpp"
 
@@ -48,11 +48,6 @@ public:
   explicit NormalOperator( Matrix const & mat )
     : m_matrix( mat )
   {}
-
-  /**
-   * @brief Destructor.
-   */
-  virtual ~NormalOperator() override = default;
 
   /**
    * @brief Apply operator to a vector.
@@ -115,4 +110,4 @@ private:
 
 } // namespace geosx
 
-#endif //GEOSX_LINEARALGEBRA_NORMALOPERATOR_HPP_
+#endif //GEOSX_LINEARALGEBRA_UTILITIES_NORMALOPERATOR_HPP_

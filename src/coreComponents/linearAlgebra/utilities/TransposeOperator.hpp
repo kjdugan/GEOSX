@@ -16,8 +16,8 @@
  * @file TransposeOperator.hpp
  */
 
-#ifndef GEOSX_LINEARALGEBRA_TRANSPOSEMATRIXOPERATOR_HPP_
-#define GEOSX_LINEARALGEBRA_TRANSPOSEMATRIXOPERATOR_HPP_
+#ifndef GEOSX_LINEARALGEBRA_UTILITIES_TRANSPOSEOPERATOR_HPP_
+#define GEOSX_LINEARALGEBRA_UTILITIES_TRANSPOSEOPERATOR_HPP_
 
 #include "linearAlgebra/common/LinearOperator.hpp"
 
@@ -52,11 +52,6 @@ public:
   { }
 
   /**
-   * @brief Destructor.
-   */
-  virtual ~TransposeOperator() override = default;
-
-  /**
    * @brief Apply operator to a vector.
    * @param src input vector (x)
    * @param dst output vector (b)
@@ -69,8 +64,7 @@ public:
   }
 
   /**
-   * @brief Get the number of global rows.
-   * @return Number of global rows in the operator.
+   * @brief @return the number of global rows.
    */
   virtual globalIndex numGlobalRows() const override
   {
@@ -78,8 +72,7 @@ public:
   }
 
   /**
-   * @brief Get the number of global columns.
-   * @return Number of global columns in the operator.
+   * @brief @return the number of global columns.
    */
   virtual globalIndex numGlobalCols() const override
   {
@@ -87,8 +80,7 @@ public:
   }
 
   /**
-   * @brief Get the number of local rows.
-   * @return Number of local rows in the operator.
+   * @brief @return the number of local rows.
    */
   virtual localIndex numLocalRows() const override
   {
@@ -96,8 +88,7 @@ public:
   }
 
   /**
-   * @brief Get the number of local columns.
-   * @return Number of local columns in the operator.
+   * @brief @return the number of local columns.
    */
   virtual localIndex numLocalCols() const override
   {
@@ -120,4 +111,4 @@ private:
 
 }
 
-#endif //GEOSX_LINEARALGEBRA_TRANSPOSEMATRIXOPERATOR_HPP_
+#endif //GEOSX_LINEARALGEBRA_UTILITIES_TRANSPOSEOPERATOR_HPP_
