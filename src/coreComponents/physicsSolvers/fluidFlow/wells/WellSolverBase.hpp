@@ -172,8 +172,8 @@ public:
    * @param dt the desired timestep
    * @param domain the domain partition
    * @param dofManager degree-of-freedom manager associated with the linear system
-   * @param matrix the system matrix
-   * @param rhs the system right-hand side vector
+   * @param localMatrix the system matrix
+   * @param localRhs the system right-hand side vector
    */
   virtual void assembleSystem( real64 const time,
                                real64 const dt,
@@ -188,8 +188,8 @@ public:
    * @param dt time step
    * @param domain the physical domain object
    * @param dofManager degree-of-freedom manager associated with the linear system
-   * @param matrix the system matrix
-   * @param rhs the system right-hand side vector
+   * @param localMatrix the system matrix
+   * @param localRhs the system right-hand side vector
    */
   virtual void assembleFluxTerms( real64 const time_n,
                                   real64 const dt,
@@ -199,35 +199,23 @@ public:
                                   arrayView1d< real64 > const & localRhs ) = 0;
 
   /**
-   * @brief assembles the accumulation term for all the well elements
+   * @brief assembles the accumulation and volume balance terms for all the well elements
    * @param domain the physical domain object
    * @param dofManager degree-of-freedom manager associated with the linear system
-   * @param matrix the system matrix
-   * @param rhs the system right-hand side vector
+   * @param localMatrix the system matrix
+   * @param localRhs the system right-hand side vector
    */
-  virtual void assembleAccumulationTerms( DomainPartition const & domain,
-                                          DofManager const & dofManager,
-                                          CRSMatrixView< real64, globalIndex const > const & localMatrix,
-                                          arrayView1d< real64 > const & localRhs ) = 0;
-
-  /**
-   * @brief assembles the volume balance terms for all well elements
-   * @param domain the physical domain object
-   * @param dofManager degree-of-freedom manager associated with the linear system
-   * @param matrix the system matrix
-   * @param rhs the system right-hand side vector
-   */
-  virtual void assembleVolumeBalanceTerms( DomainPartition const & domain,
-                                           DofManager const & dofManager,
-                                           CRSMatrixView< real64, globalIndex const > const & localMatrix,
-                                           arrayView1d< real64 > const & localRhs ) = 0;
+  virtual void assembleAccumulationAndVolumeBalanceTerms( DomainPartition const & domain,
+                                                          DofManager const & dofManager,
+                                                          CRSMatrixView< real64, globalIndex const > const & localMatrix,
+                                                          arrayView1d< real64 > const & localRhs ) = 0;
 
   /**
    * @brief assembles the pressure relations at all connections between well elements except at the well head
    * @param domain the physical domain object
    * @param dofManager degree-of-freedom manager associated with the linear system
-   * @param matrix the system matrix
-   * @param rhs the system right-hand side vector
+   * @param localMatrix the system matrix
+   * @param localRhs the system right-hand side vector
    */
   virtual void assemblePressureRelations( DomainPartition const & domain,
                                           DofManager const & dofManager,
@@ -242,7 +230,8 @@ public:
 
   /**
    * @brief Recompute all dependent quantities from primary variables (including constitutive models)
-   * @param well the well containing all the primary and dependent fields
+   * @param subRegion the well element subRegion
+   * @param targetIndex the target index of the subRegion
    */
   virtual void updateSubRegionState( WellElementSubRegion & subRegion, localIndex const targetIndex ) = 0;
 

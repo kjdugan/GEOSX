@@ -482,6 +482,16 @@ void SinglePhaseWell::assemblePressureRelations( DomainPartition const & domain,
   } );
 }
 
+void SinglePhaseWell::assembleAccumulationAndVolumeBalanceTerms( DomainPartition const & domain,
+                                                                 DofManager const & dofManager,
+                                                                 CRSMatrixView< real64, globalIndex const > const & localMatrix,
+                                                                 arrayView1d< real64 > const & localRhs )
+{
+  assembleAccumulationTerms( domain, dofManager, localMatrix, localRhs );
+  assembleVolumeBalanceTerms( domain, dofManager, localMatrix, localRhs );
+}
+
+
 void SinglePhaseWell::assembleAccumulationTerms( DomainPartition const & domain,
                                                  DofManager const & dofManager,
                                                  CRSMatrixView< real64, globalIndex const > const & localMatrix,

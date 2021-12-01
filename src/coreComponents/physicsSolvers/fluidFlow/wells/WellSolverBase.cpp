@@ -147,14 +147,11 @@ void WellSolverBase::assembleSystem( real64 const time,
                                      CRSMatrixView< real64, globalIndex const > const & localMatrix,
                                      arrayView1d< real64 > const & localRhs )
 {
-  // assemble the accumulation term in the mass balance equations
-  assembleAccumulationTerms( domain, dofManager, localMatrix, localRhs );
+  // assemble the accumulation and volume balance terms
+  assembleAccumulationAndVolumeBalanceTerms( domain, dofManager, localMatrix, localRhs );
 
   // then assemble the flux terms in the mass balance equations
   assembleFluxTerms( time, dt, domain, dofManager, localMatrix, localRhs );
-
-  // then assemble the volume balance equations
-  assembleVolumeBalanceTerms( domain, dofManager, localMatrix, localRhs );
 
   // then assemble the pressure relations between well elements
   assemblePressureRelations( domain, dofManager, localMatrix, localRhs );

@@ -437,7 +437,7 @@ TEST_F( SinglePhaseReservoirSolverTest, jacobianNumericalCheck_Accum )
                          [&] ( CRSMatrixView< real64, globalIndex const > const & localMatrix,
                                arrayView1d< real64 > const & localRhs )
   {
-    solver->getWellSolver()->assembleAccumulationTerms( domain, solver->getDofManager(), localMatrix, localRhs );
+    solver->getWellSolver()->assembleAccumulationAndVolumeBalanceTerms( domain, solver->getDofManager(), localMatrix, localRhs );
   } );
 }
 

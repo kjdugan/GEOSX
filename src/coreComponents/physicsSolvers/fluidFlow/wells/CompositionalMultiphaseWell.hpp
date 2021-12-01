@@ -19,8 +19,6 @@
 #ifndef GEOSX_PHYSICSSOLVERS_FLUIDFLOW_WELLS_COMPOSITIONALMULTIPHASEWELL_HPP_
 #define GEOSX_PHYSICSSOLVERS_FLUIDFLOW_WELLS_COMPOSITIONALMULTIPHASEWELL_HPP_
 
-#include "constitutive/fluid/layouts.hpp"
-#include "constitutive/relativePermeability/layouts.hpp"
 #include "physicsSolvers/fluidFlow/wells/WellSolverBase.hpp"
 #include "physicsSolvers/fluidFlow/CompositionalMultiphaseBase.hpp"
 
@@ -213,28 +211,16 @@ public:
                                   arrayView1d< real64 > const & localRhs ) override;
 
   /**
-   * @brief assembles the accumulation term for all the well elements
+   * @brief assembles the accumulation and volume balance terms for all the well elements
    * @param domain the physical domain object
    * @param dofManager degree-of-freedom manager associated with the linear system
    * @param matrix the system matrix
    * @param rhs the system right-hand side vector
    */
-  virtual void assembleAccumulationTerms( DomainPartition const & domain,
-                                          DofManager const & dofManager,
-                                          CRSMatrixView< real64, globalIndex const > const & localMatrix,
-                                          arrayView1d< real64 > const & localRhs ) override;
-
-  /**
-   * @brief assembles the volume balance terms for all well elements
-   * @param domain the physical domain object
-   * @param dofManager degree-of-freedom manager associated with the linear system
-   * @param matrix the system matrix
-   * @param rhs the system right-hand side vector
-   */
-  virtual void assembleVolumeBalanceTerms( DomainPartition const & domain,
-                                           DofManager const & dofManager,
-                                           CRSMatrixView< real64, globalIndex const > const & localMatrix,
-                                           arrayView1d< real64 > const & localRhs ) override;
+  virtual void assembleAccumulationAndVolumeBalanceTerms( DomainPartition const & domain,
+                                                          DofManager const & dofManager,
+                                                          CRSMatrixView< real64, globalIndex const > const & localMatrix,
+                                                          arrayView1d< real64 > const & localRhs ) override;
 
   /**
    * @brief assembles the pressure relations at all connections between well elements except at the well head
