@@ -560,6 +560,16 @@ void CompositionalMultiphaseBase::initializeFluidState( MeshLevel & mesh )
 
     CoupledSolidBase const & porousSolid = getConstitutiveModel< CoupledSolidBase >( subRegion, m_solidModelNames[targetIndex] );
 
+    // arrayView1d< real64 const > const referencePorosity = subRegion.template getReference< array1d< real64 > >( "rockPorosity_referencePorosity" );
+    // arrayView1d< real64 const > const volume = subRegion.template getElementVolume();
+
+    // std::cout << "------ POREVOLUME ------" << std::endl;
+    // forAll< parallelDevicePolicy<> >( subRegion.size(), [=] GEOSX_HOST_DEVICE ( localIndex const ei )
+    // {
+    //   std::cout << ei+1 << " " << std::setprecision(15) << referencePorosity[ei] * volume[ei] << std::endl;
+    // } );
+    // std::cout << "------------------------" << std::endl;
+    
     // saves porosity in oldPorosity
     porousSolid.initializeState();
 
@@ -1427,9 +1437,9 @@ void CompositionalMultiphaseBase::chopNegativeDensities( DomainPartition & domai
         for( localIndex ic = 0; ic < numComp; ++ic )
         {
           real64 const newDens = compDens[ei][ic] + dCompDens[ei][ic];
-          if( newDens < 0 )
+          if( newDens < 1e-12 )
           {
-            dCompDens[ei][ic] = -compDens[ei][ic];
+            dCompDens[ei][ic] = -compDens[ei][ic] + 1e-12;
           }
         }
       }
