@@ -303,9 +303,9 @@ FluxKernel::
   // real64 const day2s = 24 * 3600;
   // real64 const bars2Pa = 100000;
   // real64 const conversionFactor = cP2Pas * cubicM / day2s / bars2Pa;
-      
+
   // std::cout << sei[0]+1 << " " << sei[1]+1 << " " <<  std::setprecision(15) << transmissibility[0] / conversionFactor << std::endl;
-  
+
   // loop over phases, compute and upwind phase flux and sum contributions to each component's flux
   for( localIndex ip = 0; ip < numPhases; ++ip )
   {
@@ -331,15 +331,15 @@ FluxKernel::
 
     // Working array
     real64 dProp_dC[NC]{};
-    
+
     // calculate quantities on primary connected cells
     for( localIndex i = 0; i < numFluxElems; ++i )
     {
       localIndex const er  = seri[i];
       localIndex const esr = sesri[i];
       localIndex const ei  = sei[i];
- 
-      
+
+
       // density
       real64 const density  = phaseMassDens[er][esr][ei][0][ip];
       real64 const dDens_dP = dPhaseMassDens_dPres[er][esr][ei][0][ip];
@@ -359,7 +359,7 @@ FluxKernel::
     }
 
     //***** calculation of flux *****
-    
+
     // compute potential difference MPFA-style
     for( localIndex i = 0; i < stencilSize; ++i )
     {
@@ -391,7 +391,7 @@ FluxKernel::
           }
         }
       }
-     
+
       presGrad += transmissibility[i] * (pres[er][esr][ei] + dPres[er][esr][ei] - capPressure);
       dPresGrad_dP[i] += transmissibility[i] * (1 - dCapPressure_dP) + dTrans_dPres[i] * (pres[er][esr][ei] + dPres[er][esr][ei] - capPressure);
       for( localIndex jc = 0; jc < NC; ++jc )

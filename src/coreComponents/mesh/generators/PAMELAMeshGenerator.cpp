@@ -516,7 +516,7 @@ void PAMELAMeshGenerator::importFields( DomainPartition & domain ) const
   } );
 
   if( MpiWrapper::commSize( MPI_COMM_GEOSX ) > 1 )
-  {  
+  {
     std::map< string, string_array > fieldNames;
     for( localIndex fieldIndex = 0; fieldIndex < m_fieldsToImport.size(); fieldIndex++ )
     {
@@ -525,7 +525,7 @@ void PAMELAMeshGenerator::importFields( DomainPartition & domain ) const
     }
     CommunicationTools::getInstance().synchronizeFields( fieldNames, domain.getMeshBody( this->getName() ).getMeshLevel( 0 ), domain.getNeighbors(), false );
   }
-  
+
 }
 
 REGISTER_CATALOG_ENTRY( MeshGeneratorBase, PAMELAMeshGenerator, string const &, Group * const )

@@ -145,7 +145,7 @@ void hypre::mgr::createMGR( LinearSolverParameters const & params,
   // Requirement: displacement degrees of freedom are the first being eliminated,
   //              i.e. they are F-points for the first MGR level
   if( params.preconditionerType == LinearSolverParameters::PreconditionerType::mgr && params.mgr.separateComponents )
-    //if( params.preconditionerType == LinearSolverParameters::PreconditionerType::mgr )
+  //if( params.preconditionerType == LinearSolverParameters::PreconditionerType::mgr )
   {
     GEOSX_LAI_CHECK_ERROR( HYPRE_BoomerAMGCreate( &mgrData.mechSolver.ptr ) );
     GEOSX_LAI_CHECK_ERROR( HYPRE_BoomerAMGSetTol( mgrData.mechSolver.ptr, 0.0 ) );

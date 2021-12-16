@@ -560,7 +560,8 @@ void CompositionalMultiphaseBase::initializeFluidState( MeshLevel & mesh )
 
     CoupledSolidBase const & porousSolid = getConstitutiveModel< CoupledSolidBase >( subRegion, m_solidModelNames[targetIndex] );
 
-    // arrayView1d< real64 const > const referencePorosity = subRegion.template getReference< array1d< real64 > >( "rockPorosity_referencePorosity" );
+    // arrayView1d< real64 const > const referencePorosity = subRegion.template getReference< array1d< real64 > >(
+    // "rockPorosity_referencePorosity" );
     // arrayView1d< real64 const > const volume = subRegion.template getElementVolume();
 
     // std::cout << "------ POREVOLUME ------" << std::endl;
@@ -569,7 +570,7 @@ void CompositionalMultiphaseBase::initializeFluidState( MeshLevel & mesh )
     //   std::cout << ei+1 << " " << std::setprecision(15) << referencePorosity[ei] * volume[ei] << std::endl;
     // } );
     // std::cout << "------------------------" << std::endl;
-    
+
     // saves porosity in oldPorosity
     porousSolid.initializeState();
 
