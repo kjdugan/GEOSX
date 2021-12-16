@@ -5,7 +5,7 @@
 #
 ########################################
 
-set( GEOSX_TPL_DIR /workrd/SCR/GEOSX/install/gcc8/GEOSX_TPL-dedfcb7 CACHE PATH "" )
+set( GEOSX_TPL_DIR /workrd/SCR/GEOSX/install/gcc8/GEOSX_TPL-4a28c09 CACHE PATH "" )
 
 set( ENABLE_GTEST_DEATH_TESTS ON CACHE BOOL "" FORCE )
 set( ENABLE_UNCRUSTIFY ON CACHE BOOL "" FORCE )
