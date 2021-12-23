@@ -217,26 +217,27 @@ void InternalWellGenerator::constructPolylineNodeToSegmentMap()
     real64 vSeg[3] = LVARRAY_TENSOROPS_INIT_LOCAL_3( m_polyNodeCoords[ipolyNode_a] );
     LvArray::tensorOps::subtract< 3 >( vSeg, m_polyNodeCoords[ipolyNode_b] );
 
-    real64 const segmentLength = LvArray::tensorOps::l2Norm< 3 >( vSeg );
+    //real64 const segmentLength = LvArray::tensorOps::l2Norm< 3 >( vSeg );
 
     // various checks and warnings on the segment and element length
-    GEOSX_THROW_IF( segmentLength < 1e-2,
-                    "Error in the topology of well " << getName() <<
-                    ": we detected a polyline segment measuring less than 1 cm",
-                    InputError );
+    // GEOSX_THROW_IF( segmentLength < 1e-2,
+    //                 "Error in the topology of well " << getName() <<
+    //                 ": we detected a polyline segment measuring less than 1 cm",
+    //                 InputError );
 
-    if( segmentLength < 1.0 )
-    {
-      GEOSX_LOG_RANK_0(
-        "\n \nWarning: we detected a segment measuring less than 1 m in the topology of well " << getName() << "\n"
-                                                                                               << "The simulation can proceed like that, but very small segments may cause numerical issues, so it is something to keep an eye on.\n \n" );
-    }
+    // if( segmentLength < 1.0 )
+    // {
+    //   GEOSX_LOG_RANK_0(
+    //     "\n \nWarning: we detected a segment measuring less than 1 m in the topology of well " << getName() << "\n"
+    //                                                                                            << "The simulation can proceed like that,
+    // but very small segments may cause numerical issues, so it is something to keep an eye on.\n \n" );
+    // }
 
-    if( segmentLength / m_numElemsPerSegment < 1e-2 )
-    {
-      GEOSX_LOG_RANK_0( "\n \nWarning: the chosen number of elements per polyline segment (" << m_numElemsPerSegment <<
-                        ") leads to well elements measuring less than 1 cm in the topology of well " << getName() << "\n \n" );
-    }
+    // if( segmentLength / m_numElemsPerSegment < 1e-2 )
+    // {
+    //   GEOSX_LOG_RANK_0( "\n \nWarning: the chosen number of elements per polyline segment (" << m_numElemsPerSegment <<
+    //                     ") leads to well elements measuring less than 1 cm in the topology of well " << getName() << "\n \n" );
+    // }
 
     // map the polyline node ids to the polyline segment ids
     m_polyNodeToSegmentMap[ipolyNode_a].insert( iseg );
