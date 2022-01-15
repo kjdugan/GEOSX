@@ -23,6 +23,7 @@ set( linearAlgebra_headers
      multiscale/MeshUtils.hpp
      multiscale/MetisPartitioner.hpp
      multiscale/MsrsbLevelBuilder.hpp
+     multiscale/MsrsbUtils.hpp
      multiscale/MultiscalePreconditioner.hpp
      multiscale/PartitionerBase.hpp
      solvers/BicgstabSolver.hpp
@@ -65,6 +66,7 @@ set( linearAlgebra_sources
      multiscale/MeshUtils.cpp
      multiscale/MetisPartitioner.cpp
      multiscale/MsrsbLevelBuilder.cpp
+     multiscale/MsrsbUtils.cpp
      multiscale/MultiscalePreconditioner.cpp
      multiscale/PartitionerBase.cpp
      solvers/BicgstabSolver.cpp

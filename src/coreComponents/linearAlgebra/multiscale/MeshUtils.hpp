@@ -140,74 +140,78 @@ namespace internal
 {
 
 IS_VALID_EXPRESSION_2( isCallableWithArg, T, U, std::declval< T >()( std::declval< U >() ) );
-IS_VALID_EXPRESSION_2( isCallableWithArgAndIndex, T, U, std::declval< T >()( std::declval< U >(), localIndex() ) );
+IS_VALID_EXPRESSION_2( isCallableWithArgAndCount, T, U, std::declval< T >()( std::declval< U >(), std::ptrdiff_t{} ) );
 
-template< typename T, typename LAMBDA >
-std::enable_if_t< isCallableWithArg< LAMBDA, T > >
-forUniqueValuesHelper( T const & val, localIndex const count, LAMBDA lambda )
+template< typename T, typename FUNC >
+std::enable_if_t< isCallableWithArg< FUNC, T > >
+forUniqueValuesHelper( T const & val, std::ptrdiff_t const count, FUNC func )
 {
   GEOSX_UNUSED_VAR( count );
-  lambda( val );
+  func( val );
 }
 
-template< typename T, typename LAMBDA >
-std::enable_if_t< isCallableWithArgAndIndex< LAMBDA, T > >
-forUniqueValuesHelper( T const & val, localIndex const count, LAMBDA lambda )
+template< typename T, typename FUNC >
+std::enable_if_t< isCallableWithArgAndCount< FUNC, T > >
+forUniqueValuesHelper( T const & val, std::ptrdiff_t const count, FUNC func )
 {
-  lambda( val, count );
+  func( val, count );
 }
 
 } // namespace internal
 
-template< typename T, typename LAMBDA >
-void forUniqueValues( T * const ptr, localIndex const size, LAMBDA && lambda )
+/**
+ * @brief Call the function on unique values from a previously collected range.
+ * @tparam ITER type of range iterator
+ * @tparam FUNC type of function to call
+ * @param first start of the range
+ * @param last end of the range
+ * @param func the function to call
+ * @note Modifies the range by sorting values in place, so @p ITER must not be a const iterator.
+ */
+template< typename ITER, typename FUNC >
+void forUniqueValues( ITER first, ITER const last, FUNC && func )
 {
-  if( size == 0 )
+  if( first == last ) return;
+  LvArray::sortedArrayManipulation::makeSorted( first, last );
+  using T = typename std::iterator_traits< ITER >::value_type;
+  while( first != last )
   {
-    return;
+    T const & curr = *first;
+    ITER const it = std::find_if( first, last, [&curr]( T const & v ) { return v != curr; } );
+    internal::forUniqueValuesHelper( curr, std::distance( first, it ), std::forward< FUNC >( func ) );
+    first = it;
   }
-  LvArray::sortedArrayManipulation::makeSorted( ptr, ptr + size );
-
-  localIndex numRepeatedValues = 0;
-  for( localIndex i = 0; i < size - 1; ++i )
-  {
-    ++numRepeatedValues;
-    if( ptr[i + 1] != ptr[i] )
-    {
-      internal::forUniqueValuesHelper( ptr[i], numRepeatedValues, std::forward< LAMBDA >( lambda ) );
-      numRepeatedValues = 0;
-    }
-  }
-  ++numRepeatedValues;
-  internal::forUniqueValuesHelper( ptr[size - 1], numRepeatedValues, std::forward< LAMBDA >( lambda ) );
 }
 
-template< integer MAX_NEIGHBORS, typename L2C_MAP_TYPE, typename C2L_MAP_TYPE, typename LAMBDA >
+template< integer MAX_NEIGHBORS, typename L2C_MAP, typename C2L_MAP, typename FUNC >
 void forUniqueNeighbors( localIndex const locIdx,
-                         L2C_MAP_TYPE const & locToConn,
-                         C2L_MAP_TYPE const & connToLoc,
-                         LAMBDA && lambda )
+                         L2C_MAP const & locToConn,
+                         C2L_MAP const & connToLoc,
+                         FUNC && func )
 {
   localIndex neighbors[MAX_NEIGHBORS];
   integer numNeighbors = 0;
   for( localIndex const connIdx : locToConn[locIdx] )
   {
-    for( localIndex const nbrIdx : connToLoc[connIdx] )
+    if( connIdx >= 0 )
     {
-      GEOSX_ERROR_IF_LT( nbrIdx, 0 );
-      GEOSX_ERROR_IF_GE_MSG( numNeighbors, MAX_NEIGHBORS, "Too many neighbors, need to increase stack limit" );
-      neighbors[numNeighbors++] = nbrIdx;
+      for( localIndex const nbrIdx: connToLoc[connIdx] )
+      {
+        GEOSX_ERROR_IF_LT( nbrIdx, 0 );
+        GEOSX_ERROR_IF_GE_MSG( numNeighbors, MAX_NEIGHBORS, "Too many neighbors, need to increase stack limit" );
+        neighbors[numNeighbors++] = nbrIdx;
+      }
     }
   }
-  forUniqueValues( neighbors, numNeighbors, std::forward< LAMBDA >( lambda ) );
+  forUniqueValues( neighbors, neighbors + numNeighbors, std::forward< FUNC >( func ) );
 }
 
-template< integer MAX_NEIGHBORS, typename L2C_MAP_TYPE, typename C2L_MAP_TYPE, typename LAMBDA >
+template< integer MAX_NEIGHBORS, typename L2C_MAP, typename C2L_MAP, typename FUNC >
 void forUniqueNeighbors( localIndex const locIdx,
-                         L2C_MAP_TYPE const & locToConn,
-                         C2L_MAP_TYPE const & connToLoc,
+                         L2C_MAP const & locToConn,
+                         C2L_MAP const & connToLoc,
                          arrayView1d< integer const > const & connGhostRank,
-                         LAMBDA && lambda )
+                         FUNC && func )
 {
   localIndex neighbors[MAX_NEIGHBORS];
   integer numNeighbors = 0;
@@ -222,29 +226,29 @@ void forUniqueNeighbors( localIndex const locIdx,
       }
     }
   }
-  forUniqueValues( neighbors, numNeighbors, std::forward< LAMBDA >( lambda ) );
+  forUniqueValues( neighbors, neighbors + numNeighbors, std::forward< FUNC >( func ) );
 }
 
-template< integer MAX_NEIGHBORS, typename NBR_MAP_TYPE, typename VAL_FUNC_TYPE, typename VAL_PRED_TYPE, typename LAMBDA >
+template< integer MAX_NEIGHBORS, typename NBR_MAP, typename VAL_FUNC, typename VAL_PRED, typename FUNC >
 void forUniqueNeighborValues( localIndex const locIdx,
-                              NBR_MAP_TYPE const & neighbors,
-                              VAL_FUNC_TYPE const & valueMap,
-                              VAL_PRED_TYPE const & pred,
-                              LAMBDA && lambda )
+                              NBR_MAP const & neighbors,
+                              VAL_FUNC const & valueFunc,
+                              VAL_PRED const & pred,
+                              FUNC && func )
 {
-  using T = std::remove_cv_t< std::remove_reference_t< decltype( valueMap( localIndex {} ) ) >>;
+  using T = std::remove_cv_t< std::remove_reference_t< decltype( valueFunc( localIndex {} ) ) >>;
   T nbrValues[MAX_NEIGHBORS];
   integer numValues = 0;
   for( localIndex const nbrIdx : neighbors[locIdx] )
   {
     GEOSX_ERROR_IF_GE_MSG( numValues, MAX_NEIGHBORS, "Too many neighbors, need to increase stack limit" );
-    T const value = valueMap( nbrIdx );
+    T const value = valueFunc( nbrIdx );
     if( pred( value ) )
     {
       nbrValues[numValues++] = value;
     }
   }
-  forUniqueValues( nbrValues, numValues, std::forward< LAMBDA >( lambda ) );
+  forUniqueValues( nbrValues, nbrValues + numValues, std::forward< FUNC >( func ) );
 }
 
 } // namespace meshUtils

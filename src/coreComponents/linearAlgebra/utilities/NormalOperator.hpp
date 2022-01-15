@@ -27,19 +27,19 @@ namespace geosx
  * @brief Wraps a matrix A and represents A^T * A as a linear operator.
  * @tparam LAI the linear algebra interface
  */
-template< typename LAI >
-class NormalOperator : public LinearOperator< typename LAI::ParallelVector >
+template< typename MATRIX >
+class NormalOperator : public LinearOperator< typename MATRIX::Vector >
 {
 public:
 
   /// Alias for base type
-  using Base = LinearOperator< typename LAI::ParallelVector >;
+  using Base = LinearOperator< typename MATRIX::Vector >;
 
   /// Alias for vector type
   using Vector = typename Base::Vector;
 
   /// Alias for matrix type
-  using Matrix = typename LAI::ParallelMatrix;
+  using Matrix = MATRIX;
 
   /**
    * @brief Constructor

@@ -75,6 +75,8 @@ public:
 
 private:
 
+  void writeProlongationForDebug() const;
+
   using Base::m_params;
   using Base::m_name;
 
