@@ -75,14 +75,6 @@ EXTRINSIC_MESH_DATA_TRAIT( CoarseCellGlobalIndex,
                            NO_WRITE,
                            "Global index of the coarse scale cell" );
 
-EXTRINSIC_MESH_DATA_TRAIT( FineCellLocalIndices,
-                           "fineCellLocalIndices",
-                           ArrayOfArrays< localIndex >,
-                           -1,
-                           NOPLOT,
-                           NO_WRITE,
-                           "Local indices of the fine scale cells that make up a coarse cell" );
-
 EXTRINSIC_MESH_DATA_TRAIT( CoarseNodeLocalIndex,
                            "coarseNodeLocalIndex",
                            array1d< localIndex >,
@@ -98,6 +90,14 @@ EXTRINSIC_MESH_DATA_TRAIT( CoarseNodeGlobalIndex,
                            LEVEL_0,
                            NO_WRITE,
                            "Global index of the coarse scale node" );
+
+EXTRINSIC_MESH_DATA_TRAIT( NodalPartitionGlobalIndex,
+                           "nodalPartitionGlobalIndex",
+                           array1d< globalIndex >,
+                           -1,
+                           LEVEL_0,
+                           NO_WRITE,
+                           "Global index of the coarse node partition" );
 
 EXTRINSIC_MESH_DATA_TRAIT( FineNodeLocalIndex,
                            "fineNodeLocalIndex",

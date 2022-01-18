@@ -248,7 +248,7 @@ buildTentativeProlongation( multiscale::MeshLevel const & fineMesh,
   // Build support regions and tentative prolongation
   ArrayOfSets< localIndex > const nodalConn = buildNodalConnectivity( fineMesh.nodeManager(), fineMesh.cellManager() );
   arrayView1d< localIndex const > const coarseNodes = coarseMesh.nodeManager().getExtrinsicData< meshData::FineNodeLocalIndex >().toViewConst();
-  array1d< localIndex > const initPart = msrsb::makeSeededPartition( nodalConn.toViewConst(), coarseNodes, supports );
+  array1d< localIndex > const initPart = makeSeededPartition( nodalConn.toViewConst(), coarseNodes, supports );
 
   // Construct the tentative prolongation, consuming the sparsity pattern
   CRSMatrix< real64, globalIndex > localMatrix;
@@ -278,6 +278,88 @@ buildTentativeProlongation( multiscale::MeshLevel const & fineMesh,
 }
 
 } // namespace node
+
+namespace cell
+{
+
+/**
+ * @brief Build the basic sparsity pattern for prolongation.
+ *
+ * Support of a coarse nodal basis function is defined as the set of fine-scale nodes
+ * that are adjacent exclusively to subdomains (coarse cells or boundaries) that are
+ * also adjacent to that coarse node.
+ */
+ArrayOfSets< localIndex >
+buildSupports( multiscale::MeshLevel & fine,
+               multiscale::MeshLevel const & coarse,
+               arrayView1d< string const > const & boundaryNodeSets,
+               arrayView1d< integer > const & supportBoundaryIndicator )
+{
+  GEOSX_MARK_FUNCTION;
+
+  // First, build the nodal partition to act as dual "volumes"
+  // Unfortunately, we need nodal supports for that (in order to limit partition growth).
+  array1d< localIndex > const nodalPartLocal = [&]
+  {
+    array1d< integer > const supportBoundaryIndicators( fine.nodeManager().size() );
+    ArrayOfSets< localIndex > const nodalSupports = msrsb::node::buildSupports( fine,
+                                                                                coarse,
+                                                                                boundaryNodeSets,
+                                                                                supportBoundaryIndicators );
+
+    ArrayOfSets< localIndex > const nodalConn = buildNodalConnectivity( fine.nodeManager(), fine.cellManager() );
+    arrayView1d< localIndex const > const coarseNodes = coarse.nodeManager().getExtrinsicData< meshData::FineNodeLocalIndex >().toViewConst();
+    return makeSeededPartition( nodalConn.toViewConst(), coarseNodes, nodalSupports.toViewConst() );
+  }();
+
+  // Need to make nodal partition global and synced across ranks to have a consistent dual
+  array1d< globalIndex > & nodalPart =
+    fine.nodeManager().registerWrapper< meshData::NodalPartitionGlobalIndex::type >( meshData::NodalPartitionGlobalIndex::key() ).reference();
+  {
+    globalIndex const firstLocalNodeIndex = coarse.nodeManager().localToGlobalMap()[0];
+    forAll< parallelHostPolicy >( fine.nodeManager().numOwnedObjects(),
+                                  [firstLocalNodeIndex,
+                                    nodalPart = nodalPart.toView(),
+                                    nodalPartLocal = nodalPartLocal.toView()]( localIndex const inf )
+    {
+      nodalPart[inf] = nodalPartLocal[inf] + firstLocalNodeIndex;
+    } );
+    string_array fieldNames;
+    fieldNames.emplace_back( meshData::NodalPartitionGlobalIndex::key() );
+    CommunicationTools::getInstance().synchronizeFields( fieldNames, fine.nodeManager(), fine.domain()->getNeighbors(), false );
+  }
+
+  // TODO remove debugging output
+  fine.writeNodeData( { meshData::NodalPartitionGlobalIndex::key() } );
+
+  // Make an adjacency map of fine cells to nodal partitions
+  ArrayOfSets< globalIndex > const cellToNodalPart =
+    meshUtils::buildFineObjectToSubdomainMap( fine.cellManager(), nodalPart.toViewConst(), {} );
+
+  array1d< localIndex > const dualVertexCells =
+    meshUtils::findCoarseNodesByDualPartition( fine.cellManager().toDualRelation().toViewConst(),
+                                               fine.nodeManager().toDualRelation().toViewConst(),
+                                               cellToNodalPart.toViewConst(), 3 );
+
+  // Construct adjacency maps between dual coarse "vertices" (cells) and volumes (nodal partitions)
+  // TODO
+
+  ArrayOfSets< localIndex > supports;
+  return supports;
+}
+
+CRSMatrix< real64, globalIndex >
+buildTentativeProlongation( multiscale::MeshLevel const & fineMesh,
+                            multiscale::MeshLevel const & coarseMesh,
+                            ArrayOfSetsView< localIndex const > const & supports,
+                            integer const numComp )
+{
+  // TODO
+  CRSMatrix< real64, globalIndex > prolongation;
+  return prolongation;
+}
+
+} // namespace cell
 
 } // namespace msrsb
 
@@ -339,8 +421,10 @@ void MsrsbLevelBuilder< LAI >::initializeCoarseLevel( LevelBuilderBase< LAI > & 
     }
     else
     {
-      GEOSX_ERROR( "Cell-centered MsRSB method not implemented yet" );
-      // TODO cell-centered method
+      ArrayOfSets< localIndex > const supports = msrsb::cell::buildSupports( fine.mesh(),
+                                                                             m_mesh,
+                                                                             m_params.boundarySets,
+                                                                             supportBoundaryIndicators );
     }
 
     msrsb::makeGlobalDofLists( supportBoundaryIndicators,

@@ -49,11 +49,15 @@ public:
 
   /**
    * @brief Store auxiliary partitioning-related data on the coarse mesh.
-   * @param fineMesh the fine mesh
    * @param coarseMesh the coarse mesh
-   * @param partition partition index array produced in generate()
    *
-   * This function can be used to
+   * This function can be used to transfer auxiliary data used by the partitioner implementation
+   * onto the coarse grid after it's been created based on the previously generated partition.
+   * For example, a Cartesian partitioner may need to assign Cartesian indices to newly generated
+   * coarse cells, so that it can be later applied to the coarse grid recursively.
+   *
+   * @note It is expected that the coarse mesh contains exactly as many cells as there are unique
+   *       partition indices produced by generate().
    */
   virtual void setCoarseData( multiscale::MeshLevel & coarseMesh ) const
   {

@@ -21,6 +21,7 @@
 
 #include "common/DataTypes.hpp"
 #include "mesh/ObjectManagerBase.hpp"
+#include "linearAlgebra/multiscale/MeshObjectManager.hpp"
 
 namespace geosx
 {
@@ -139,12 +140,24 @@ void copySets( ObjectManagerBase const & srcManager,
 namespace internal
 {
 
+// We don't have versions of IS_VALID_EXPRESSION for more args (and I don't want to add them).
+// So second argument (count) is hardcoded to std::ptrdiff_t below.
+
+IS_VALID_EXPRESSION( isCallableWithoutArgs, T, std::declval< T >()() );
 IS_VALID_EXPRESSION_2( isCallableWithArg, T, U, std::declval< T >()( std::declval< U >() ) );
 IS_VALID_EXPRESSION_2( isCallableWithArgAndCount, T, U, std::declval< T >()( std::declval< U >(), std::ptrdiff_t{} ) );
 
 template< typename T, typename FUNC >
+std::enable_if_t< isCallableWithoutArgs< FUNC > >
+callWithArgs( T const & val, std::ptrdiff_t const count, FUNC func )
+{
+  GEOSX_UNUSED_VAR( val, count );
+  func();
+}
+
+template< typename T, typename FUNC >
 std::enable_if_t< isCallableWithArg< FUNC, T > >
-forUniqueValuesHelper( T const & val, std::ptrdiff_t const count, FUNC func )
+callWithArgs( T const & val, std::ptrdiff_t const count, FUNC func )
 {
   GEOSX_UNUSED_VAR( count );
   func( val );
@@ -152,7 +165,7 @@ forUniqueValuesHelper( T const & val, std::ptrdiff_t const count, FUNC func )
 
 template< typename T, typename FUNC >
 std::enable_if_t< isCallableWithArgAndCount< FUNC, T > >
-forUniqueValuesHelper( T const & val, std::ptrdiff_t const count, FUNC func )
+callWithArgs( T const & val, std::ptrdiff_t const count, FUNC func )
 {
   func( val, count );
 }
@@ -178,7 +191,7 @@ void forUniqueValues( ITER first, ITER const last, FUNC && func )
   {
     T const & curr = *first;
     ITER const it = std::find_if( first, last, [&curr]( T const & v ) { return v != curr; } );
-    internal::forUniqueValuesHelper( curr, std::distance( first, it ), std::forward< FUNC >( func ) );
+    internal::callWithArgs( curr, std::distance( first, it ), std::forward< FUNC >( func ) );
     first = it;
   }
 }
@@ -250,6 +263,100 @@ void forUniqueNeighborValues( localIndex const locIdx,
   }
   forUniqueValues( nbrValues, nbrValues + numValues, std::forward< FUNC >( func ) );
 }
+
+/**
+ * @brief Build a map from mesh objects (nodes/cells) to subdomains defined by a partitioning of dual objects (cells/nodes).
+ * @tparam INDEX_TYPE type of subdomain index
+ * @param fineObjectManager
+ * @param subdomains array of subdomain indices of dual objects
+ * @param boundaryObjectSets (optional) list of boundary set names
+ * @return array of subdomain index sets
+ *
+ * Boundaries (if present) are treated as additional "virtual" subdomains.
+ * They are assigned unique negative indices to distinguish them from actual subdomains.
+ * Pass an empty list of set names to ignore this feature.
+ */
+template< typename INDEX_TYPE >
+ArrayOfSets< INDEX_TYPE >
+buildFineObjectToSubdomainMap( MeshObjectManager const & fineObjectManager,
+                               arrayView1d< INDEX_TYPE const > const & subdomains,
+                               arrayView1d< string const > const & boundaryObjectSets )
+{
+  MeshObjectManager::MapViewConst const dualMap = fineObjectManager.toDualRelation().toViewConst();
+
+  // count the row lengths
+  array1d< localIndex > rowCounts( fineObjectManager.size() );
+  forAll< parallelHostPolicy >( fineObjectManager.size(), [=, rowCounts = rowCounts.toView()]( localIndex const objIdx )
+  {
+    localIndex count = 0;
+    forUniqueNeighborValues< 128 >( objIdx, dualMap, subdomains, []( auto ){ return true; }, [&count]
+    {
+      ++count;
+    } );
+    rowCounts[objIdx] = count;
+  } );
+  for( string const & setName : boundaryObjectSets )
+  {
+    SortedArrayView< localIndex const > const set = fineObjectManager.getSet( setName ).toViewConst();
+    forAll< parallelHostPolicy >( set.size(), [=, rowCounts = rowCounts.toView()]( localIndex const i )
+    {
+      ++rowCounts[set[i]];
+    } );
+  }
+
+  // Resize from row lengths
+  ArrayOfSets< INDEX_TYPE > objectToSubdomain;
+  objectToSubdomain.template resizeFromCapacities< parallelHostPolicy >( rowCounts.size(), rowCounts.data() );
+
+  // Fill the map
+  INDEX_TYPE numBoundaries = 0;
+  for( string const & setName : boundaryObjectSets )
+  {
+    ++numBoundaries;
+    SortedArrayView< localIndex const > const set = fineObjectManager.getSet( setName ).toViewConst();
+    forAll< parallelHostPolicy >( set.size(), [=, objToSub = objectToSubdomain.toView()]( localIndex const i )
+    {
+      objToSub.insertIntoSet( set[i], -numBoundaries );
+    } );
+  }
+  forAll< parallelHostPolicy >( fineObjectManager.size(), [=, objToSub = objectToSubdomain.toView()]( localIndex const objIdx )
+  {
+    for( localIndex const dualIdx : dualMap[objIdx] )
+    {
+      objToSub.insertIntoSet( objIdx, subdomains[dualIdx] );
+    }
+  } );
+
+  return objectToSubdomain;
+}
+
+/**
+ * @brief Find "coarse" nodes in a mesh in which dual objects have been partitioned into subdomains.
+ * @param nodeToDual adjacency map of nodes to its dual object
+ * @param dualToNode adjacency map of dual objects to nodes
+ * @param nodeToSubdomain adjacency of nodes to subdomains (must be built by the caller)
+ * @param minSubdomains minimum number of adjacent subdomains required for a coarse node (reduces search space)
+ * @param allowMultiNodes whether clusters of similar nodes should produce multiple coarse nodes (if false, just one will be chosen)
+ * @return an array containing indices of nodes identified as "coarse"
+ *
+ * "Coarse" nodes are defined as those that, given a partitioning of dual objects (e.g. mesh volumes or cells)
+ * into subdomains, are adjacent to the locally maximal (among its neighbors) number of such subdomains.
+ *
+ * The implementation groups nodes into "features" (that are groups of nodes sharing the same subdomain list)
+ * and finds features with largest list (or "key") among adjacent features. Such features typically consist of
+ * just a single node. Occasionally, in complex topologies, coarse features with multiple nodes may be found.
+ * In that case, any of the nodes in the feature can be chosen as coarse (since they all have the same adjacent
+ * subdomains), or each of them can be made a separate coarse node (this is the default behavior).
+ *
+ * The analysis is fully local. In order for coarse nodes to be chosen consistently across processes,
+ * adjacency maps must include ghosted node/dual objects and correct global subdomain indices.
+ */
+array1d< localIndex >
+findCoarseNodesByDualPartition( MeshObjectManager::MapViewConst const & nodeToDual,
+                                MeshObjectManager::MapViewConst const & dualToNode,
+                                ArrayOfSetsView< globalIndex const > const & nodeToSubdomain,
+                                integer const minSubdomains,
+                                bool allowMultiNodes = true );
 
 } // namespace meshUtils
 } // namespace multiscale
