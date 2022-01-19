@@ -46,11 +46,37 @@ makeSeededPartition( ArrayOfSetsView< localIndex const > const & connectivity,
                      arrayView1d< localIndex const > const & seeds,
                      ArrayOfSetsView< localIndex const > const & supports );
 
+/**
+ * @brief Build a map of support regions through subdomain adjacency.
+ * @param fineObjectToSubdomain map of fine-scale objects (points) to adjacent subdomains
+ *        ("virtual" boundary subdomains, if included, must have negative indices)
+ * @param subdomainToCoarseObject map of subdomains to adjacent coarse-scale objects (points).
+ *        Does not need to include boundary subdomains.
+ * @param fineObjectIndex (dense) map of coarse objects to corresponding fine objects
+ * @param coarseObjectIndex (sparse) map of fine objects to corresponding coarse objects.
+ *        Fine objects that do not map to coarse mesh must be marked with a negative values (e.g. -1).
+ * @param supportBoundaryIndicator auxiliary output array that marks points on global support boundary with a nonzero value (1).
+ * @return a map of fine objects (points) to a list of coarse objects (points) to the support of which they belong
+ */
+ArrayOfSets< localIndex >
+buildSupports( ArrayOfSetsView< localIndex const > const & fineObjectToSubdomain,
+               ArrayOfSetsView< localIndex const > const & subdomainToCoarseObject,
+               arrayView1d< localIndex const > const & fineObjectIndex,
+               arrayView1d< localIndex const > const & coarseObjectIndex,
+               arrayView1d< integer > const & supportBoundaryIndicator );
+
 SparsityPattern< globalIndex >
 buildProlongationSparsity( MeshObjectManager const & fineManager,
                            MeshObjectManager const & coarseManager,
                            ArrayOfSetsView< localIndex const > const & supports,
                            integer const numComp );
+
+CRSMatrix< real64, globalIndex >
+buildTentativeProlongation( MeshObjectManager const & fineManager,
+                            MeshObjectManager const & coarseManager,
+                            ArrayOfSetsView< localIndex const > const & supports,
+                            arrayView1d< localIndex const > const & initPart,
+                            integer const numComp );
 
 void makeGlobalDofLists( arrayView1d< integer const > const & indicator,
                          integer const numComp,

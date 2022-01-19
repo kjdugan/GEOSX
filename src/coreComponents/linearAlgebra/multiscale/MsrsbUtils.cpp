@@ -183,6 +183,89 @@ makeSeededPartition( ArrayOfSetsView< localIndex const > const & connectivity,
   return part;
 }
 
+ArrayOfSets< localIndex >
+buildSupports( ArrayOfSetsView< localIndex const > const & fineObjectToSubdomain,
+               ArrayOfSetsView< localIndex const > const & subdomainToCoarseObject,
+               arrayView1d< localIndex const > const & fineObjectIndex,
+               arrayView1d< localIndex const > const & coarseObjectIndex,
+               arrayView1d< integer > const & supportBoundaryIndicator )
+{
+  GEOSX_MARK_FUNCTION;
+
+  // Algorithm:
+  // Loop over all fine nodes.
+  // - If node is a coarse node, immediately assign to its own support.
+  //   Otherwise, get a list of adjacent coarse cells.
+  // - If list is length 1, assign the node to supports of all coarse nodes adjacent to that coarse cell.
+  //   Otherwise, collect a unique list of candidate coarse nodes by visiting them through coarse cells.
+  // - For each candidate, check that fine node's subdomain list is included in the candidates subdomain list.
+  //   Otherwise, discard the candidate.
+  // The first two cases could be handled by the last one; they are just an optimization that avoids some checks.
+  // All above is done twice: once to count (or get upper bound on) row lengths, once to actually build supports.
+  // For the last case, don't need to check inclusion when counting, just use number of candidates as upper bound.
+
+  // Count row lengths and fill boundary indicators
+  supportBoundaryIndicator.setValues< parallelHostPolicy >( 0 );
+  array1d< localIndex > rowLengths( fineObjectToSubdomain.size() );
+  forAll< parallelHostPolicy >( fineObjectToSubdomain.size(),
+                                [=, rowLengths = rowLengths.toView(),
+                                 supportBoundaryIndicator = supportBoundaryIndicator.toView()]( localIndex const inf )
+  {
+    if( coarseObjectIndex[inf] >= 0 )
+    {
+      rowLengths[inf] = 1;
+      supportBoundaryIndicator[inf] = 1;
+    }
+    else if( fineObjectToSubdomain.sizeOfSet( inf ) == 1 )
+    {
+      rowLengths[inf] = subdomainToCoarseObject.sizeOfSet( fineObjectToSubdomain( inf, 0 ) );
+    }
+    else
+    {
+      localIndex numCoarseNodes = 0;
+      meshUtils::forUniqueNeighbors< 256 >( inf, fineObjectToSubdomain, subdomainToCoarseObject, [&]( localIndex )
+      {
+        ++numCoarseNodes;
+      } );
+      rowLengths[inf] = numCoarseNodes;
+      supportBoundaryIndicator[inf] = 1;
+    }
+  } );
+
+  // Create and resize
+  ArrayOfSets< localIndex > supports;
+  supports.resizeFromCapacities< parallelHostPolicy >( rowLengths.size(), rowLengths.data() );
+
+  // Fill the map
+  forAll< parallelHostPolicy >( fineObjectToSubdomain.size(),
+                                [=, supports = supports.toView()]( localIndex const inf )
+  {
+    if( coarseObjectIndex[inf] >= 0 )
+    {
+      supports.insertIntoSet( inf, coarseObjectIndex[inf] );
+    }
+    else if( fineObjectToSubdomain.sizeOfSet( inf ) == 1 )
+    {
+      arraySlice1d< localIndex const > const coarseNodes = subdomainToCoarseObject[fineObjectToSubdomain( inf, 0 )];
+      supports.insertIntoSet( inf, coarseNodes.begin(), coarseNodes.end() );
+    }
+    else
+    {
+      arraySlice1d< localIndex const > const fsubs = fineObjectToSubdomain[inf];
+      meshUtils::forUniqueNeighbors< 256 >( inf, fineObjectToSubdomain, subdomainToCoarseObject, [&]( localIndex const inc )
+      {
+        arraySlice1d< localIndex const > const csubs = fineObjectToSubdomain[fineObjectIndex[inc]];
+        if( std::includes( csubs.begin(), csubs.end(), fsubs.begin(), fsubs.end() ) )
+        {
+          supports.insertIntoSet( inf, inc );
+        }
+      } );
+    }
+  } );
+
+  return supports;
+}
+
 SparsityPattern< globalIndex >
 buildProlongationSparsity( MeshObjectManager const & fineManager,
                            MeshObjectManager const & coarseManager,
@@ -221,6 +304,42 @@ buildProlongationSparsity( MeshObjectManager const & fineManager,
   } );
 
   return pattern;
+}
+
+CRSMatrix< real64, globalIndex >
+buildTentativeProlongation( MeshObjectManager const & fineManager,
+                            MeshObjectManager const & coarseManager,
+                            ArrayOfSetsView< localIndex const > const & supports,
+                            arrayView1d< localIndex const > const & initPart,
+                            integer const numComp )
+{
+  GEOSX_MARK_FUNCTION;
+
+  // Construct the tentative prolongation, consuming the sparsity pattern
+  CRSMatrix< real64, globalIndex > localMatrix;
+  {
+    SparsityPattern< globalIndex > localPattern =
+      buildProlongationSparsity( fineManager, coarseManager, supports, numComp );
+    localMatrix.assimilate< parallelHostPolicy >( std::move( localPattern ) );
+  }
+
+  // Add initial unity values
+  arrayView1d< globalIndex const > const coarseLocalToGlobal = coarseManager.localToGlobalMap();
+  forAll< parallelHostPolicy >( fineManager.numOwnedObjects(),
+                                [=, localMatrix = localMatrix.toViewConstSizes()]( localIndex const inf )
+  {
+    if( initPart[inf] >= 0 )
+    {
+      real64 const value = 1.0;
+      for( integer ic = 0; ic < numComp; ++ic )
+      {
+        globalIndex const col = coarseLocalToGlobal[initPart[inf]] * numComp + ic;
+        localMatrix.addToRow< serialAtomic >( inf * numComp + ic, &col, &value, 1 );
+      }
+    }
+  } );
+
+  return localMatrix;
 }
 
 void makeGlobalDofLists( arrayView1d< integer const > const & indicator,

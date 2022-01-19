@@ -256,23 +256,21 @@ void buildCoarseNodes( multiscale::MeshLevel & fineMesh,
   MeshObjectManager & fineCellManager = fineMesh.cellManager();
   MeshObjectManager & coarseNodeManager = coarseMesh.nodeManager();
 
-  // Create the array manually in order to specify default capacity (no suitable post-resize facility exists)
-  ArrayOfSets< globalIndex > & nodeToSubdomain =
-    fineNodeManager.registerWrapper< meshData::NodeToCoarseSubdomain::type >( meshData::NodeToCoarseSubdomain::key() ).reference();
-
-  // Build and sync an adjacency map of fine nodes to coarse subdomains (including global boundaries)
-  nodeToSubdomain = meshUtils::buildFineObjectToSubdomainMap( fineNodeManager,
-                                                              fineCellManager.getExtrinsicData< meshData::CoarseCellGlobalIndex >().toViewConst(),
-                                                              boundaryNodeSets );
-  array1d< string > fields;
-  fields.emplace_back( meshData::NodeToCoarseSubdomain::key() );
-  CommunicationTools::getInstance().synchronizeFields( fields, fineNodeManager, fineMesh.domain()->getNeighbors(), false );
-
   // Find all locally present coarse nodes
-  array1d< localIndex > const coarseNodes =
-    meshUtils::findCoarseNodesByDualPartition( fineNodeManager.toDualRelation().toViewConst(),
-                                               fineCellManager.toDualRelation().toViewConst(),
-                                               nodeToSubdomain.toViewConst(), 3 );
+  array1d< localIndex > const coarseNodes = [&]
+  {
+    // Build and sync an adjacency map of fine nodes to coarse subdomains (including global boundaries)
+    ArrayOfSets< globalIndex > nodeToSubdomain =
+      meshUtils::buildFineObjectToSubdomainMap( fineNodeManager,
+                                                fineCellManager.getExtrinsicData< meshData::CoarseCellGlobalIndex >().toViewConst(),
+                                                boundaryNodeSets );
+    meshUtils::ScopedDataRegistrar reg( fineNodeManager, "nodeToCoarseSubdomain", nodeToSubdomain );
+    reg.sync( *fineMesh.domain() );
+
+    return meshUtils::findCoarseNodesByDualPartition( fineNodeManager.toDualRelation().toViewConst(),
+                                                      fineCellManager.toDualRelation().toViewConst(),
+                                                      nodeToSubdomain.toViewConst(), 3 );
+  }();
 
   // Reorder them to have all local nodes precede ghosted (stable partition to preserve order)
   arrayView1d< integer const > const nodeGhostRank = fineNodeManager.ghostRank();

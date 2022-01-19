@@ -43,101 +43,6 @@ namespace msrsb
 namespace node
 {
 
-ArrayOfSets< localIndex >
-buildFineSubdomainMap( MeshObjectManager const & fineNodeManager,
-                       MeshObjectManager const & fineCellManager,
-                       arrayView1d< string const > const & boundaryNodeSets )
-{
-  MeshObjectManager::MapViewConst const nodeToCell = fineNodeManager.toDualRelation().toViewConst();
-
-  // count the row lengths
-  array1d< localIndex > rowCounts( fineNodeManager.size() );
-  forAll< parallelHostPolicy >( fineNodeManager.size(), [=, rowCounts = rowCounts.toView()]( localIndex const inf )
-  {
-    rowCounts[inf] = nodeToCell.sizeOfSet( inf );
-  } );
-  for( string const & setName: boundaryNodeSets )
-  {
-    SortedArrayView< localIndex const > const set = fineNodeManager.getSet( setName ).toViewConst();
-    forAll< parallelHostPolicy >( set.size(), [=, rowCounts = rowCounts.toView()]( localIndex const i )
-    {
-      ++rowCounts[set[i]];
-    } );
-  }
-
-  // Resize from row lengths
-  ArrayOfSets< localIndex > nodeToSubdomain;
-  nodeToSubdomain.resizeFromCapacities< parallelHostPolicy >( rowCounts.size(), rowCounts.data() );
-
-  // Fill the map
-  localIndex numBoundaries = 0;
-  for( string const & setName: boundaryNodeSets )
-  {
-    ++numBoundaries;
-    SortedArrayView< localIndex const > const set = fineNodeManager.getSet( setName ).toViewConst();
-    forAll< parallelHostPolicy >( set.size(), [=, nodeToSub = nodeToSubdomain.toView()]( localIndex const inf )
-    {
-      nodeToSub.insertIntoSet( set[inf], -numBoundaries ); // use negative indices to differentiate boundary subdomains
-    } );
-  }
-
-  arrayView1d< localIndex const > const coarseCellLocalIndex = fineCellManager.getExtrinsicData< meshData::CoarseCellLocalIndex >();
-  forAll< parallelHostPolicy >( fineNodeManager.size(), [=, nodeToSub = nodeToSubdomain.toView()]( localIndex const inf )
-  {
-    for( localIndex const icf: nodeToCell[inf] )
-    {
-      nodeToSub.insertIntoSet( inf, coarseCellLocalIndex[icf] );
-    }
-  } );
-
-  return nodeToSubdomain;
-}
-
-ArrayOfSets< localIndex >
-buildCoarseSubdomainMap( MeshObjectManager const & coarseNodeManager,
-                         arrayView1d< string const > const & boundaryNodeSets )
-{
-  MeshObjectManager::MapViewConst const nodeToCell = coarseNodeManager.toDualRelation().toViewConst();
-
-  // count the row lengths
-  array1d< localIndex > rowCounts( coarseNodeManager.size() );
-  forAll< parallelHostPolicy >( coarseNodeManager.size(), [=, rowCounts = rowCounts.toView()]( localIndex const inc )
-  {
-    rowCounts[inc] = nodeToCell.sizeOfSet( inc );
-  } );
-  for( string const & setName: boundaryNodeSets )
-  {
-    SortedArrayView< localIndex const > const set = coarseNodeManager.getSet( setName ).toViewConst();
-    forAll< parallelHostPolicy >( set.size(), [=, rowCounts = rowCounts.toView()]( localIndex const i )
-    {
-      ++rowCounts[set[i]];
-    } );
-  }
-
-  // Resize from row lengths
-  ArrayOfSets< localIndex > nodeToSubdomain;
-  nodeToSubdomain.resizeFromCapacities< parallelHostPolicy >( rowCounts.size(), rowCounts.data() );
-
-  // Fill the map
-  localIndex numBoundaries = 0;
-  for( string const & setName: boundaryNodeSets )
-  {
-    ++numBoundaries;
-    SortedArrayView< localIndex const > const set = coarseNodeManager.getSet( setName ).toViewConst();
-    forAll< parallelHostPolicy >( set.size(), [=, nodeToSub = nodeToSubdomain.toView()]( localIndex const inc )
-    {
-      nodeToSub.insertIntoSet( set[inc], -numBoundaries ); // use negative indices to differentiate boundary subdomains
-    } );
-  }
-  forAll< parallelHostPolicy >( coarseNodeManager.size(), [=, nodeToSub = nodeToSubdomain.toView()]( localIndex const inc )
-  {
-    arraySlice1d< localIndex const > const ccells = nodeToCell[inc];
-    nodeToSub.insertIntoSet( inc, ccells.begin(), ccells.end() );
-  } );
-
-  return nodeToSubdomain;
-}
-
 /**
  * @brief Build the basic sparsity pattern for prolongation.
  *
@@ -146,7 +51,7 @@ buildCoarseSubdomainMap( MeshObjectManager const & coarseNodeManager,
  * also adjacent to that coarse node.
  */
 ArrayOfSets< localIndex >
-buildSupports( multiscale::MeshLevel const & fine,
+buildSupports( multiscale::MeshLevel & fine,
                multiscale::MeshLevel const & coarse,
                arrayView1d< string const > const & boundaryNodeSets,
                arrayView1d< integer > const & supportBoundaryIndicator )
@@ -154,127 +59,15 @@ buildSupports( multiscale::MeshLevel const & fine,
   GEOSX_MARK_FUNCTION;
 
   ArrayOfSets< localIndex > const fineNodeToSubdomain =
-    buildFineSubdomainMap( fine.nodeManager(), fine.cellManager(), boundaryNodeSets );
-  ArrayOfSets< localIndex > const coarseNodeToSubdomain =
-    buildCoarseSubdomainMap( coarse.nodeManager(), boundaryNodeSets );
+    meshUtils::buildFineObjectToSubdomainMap( fine.nodeManager(),
+                                              fine.cellManager().getExtrinsicData< meshData::CoarseCellLocalIndex >().toViewConst(),
+                                              boundaryNodeSets );
 
-  ArrayOfSetsView< localIndex const > const coarseCellToNode = coarse.cellManager().toDualRelation().toViewConst();
-  arrayView1d< localIndex const > const coarseNodeIndex = fine.nodeManager().getExtrinsicData< meshData::CoarseNodeLocalIndex >();
-
-  // Algorithm:
-  // Loop over all fine nodes.
-  // If node is a coarse node, immediately assign to its own support.
-  // Otherwise, get a list of adjacent coarse cells.
-  // If list is length 1, assign the node to supports of all coarse nodes adjacent to that coarse cell.
-  // Otherwise, collect a unique list of candidate coarse nodes by visiting them through coarse cells.
-  // For each candidate, check that fine node's subdomain list is included in the candidates subdomain list.
-  // Otherwise, discard the candidate.
-  //
-  // All above is done twice: once to count (or get upper bound on) row lengths, once to actually build supports.
-  // For the last case, don't need to check inclusion when counting, just use number of candidates as upper bound.
-
-  // Count row lengths and fill boundary indicators
-  array1d< localIndex > rowLengths( fine.nodeManager().size() );
-  forAll< parallelHostPolicy >( fine.nodeManager().size(), [coarseNodeIndex, coarseCellToNode,
-    rowLengths = rowLengths.toView(),
-    fineNodeToSubdomain = fineNodeToSubdomain.toViewConst(),
-    supportBoundaryIndicator = supportBoundaryIndicator.toView()]( localIndex const inf )
-  {
-    if( coarseNodeIndex[inf] >= 0 )
-    {
-      rowLengths[inf] = 1;
-      supportBoundaryIndicator[inf] = 1;
-    }
-    else if( fineNodeToSubdomain.sizeOfSet( inf ) == 1 )
-    {
-      rowLengths[inf] = coarseCellToNode.sizeOfSet( fineNodeToSubdomain( inf, 0 ) );
-    }
-    else
-    {
-      localIndex numCoarseNodes = 0;
-      meshUtils::forUniqueNeighbors< 256 >( inf, fineNodeToSubdomain, coarseCellToNode, [&]( localIndex )
-      {
-        ++numCoarseNodes;
-      } );
-      rowLengths[inf] = numCoarseNodes;
-      supportBoundaryIndicator[inf] = 1;
-    }
-  } );
-
-  // Create and resize
-  ArrayOfSets< localIndex > supports;
-  supports.resizeFromCapacities< parallelHostPolicy >( rowLengths.size(), rowLengths.data() );
-
-  // Fill the map
-  forAll< parallelHostPolicy >( fine.nodeManager().size(), [coarseNodeIndex, coarseCellToNode,
-    supports = supports.toView(),
-    fineNodeToSubdomain = fineNodeToSubdomain.toViewConst(),
-    coarseNodeToSubdomain = coarseNodeToSubdomain.toViewConst()]( localIndex const inf )
-  {
-    if( coarseNodeIndex[inf] >= 0 )
-    {
-      supports.insertIntoSet( inf, coarseNodeIndex[inf] );
-    }
-    else if( fineNodeToSubdomain.sizeOfSet( inf ) == 1 )
-    {
-      arraySlice1d< localIndex const > const coarseNodes = coarseCellToNode[fineNodeToSubdomain( inf, 0 )];
-      supports.insertIntoSet( inf, coarseNodes.begin(), coarseNodes.end() );
-    }
-    else
-    {
-      arraySlice1d< localIndex const > const fsubs = fineNodeToSubdomain[inf];
-      meshUtils::forUniqueNeighbors< 256 >( inf, fineNodeToSubdomain, coarseCellToNode, [&]( localIndex const inc )
-      {
-        arraySlice1d< localIndex const > const csubs = coarseNodeToSubdomain[inc];
-        if( std::includes( csubs.begin(), csubs.end(), fsubs.begin(), fsubs.end() ) )
-        {
-          supports.insertIntoSet( inf, inc );
-        }
-      } );
-    }
-  } );
-
-  return supports;
-}
-
-CRSMatrix< real64, globalIndex >
-buildTentativeProlongation( multiscale::MeshLevel const & fineMesh,
-                            multiscale::MeshLevel const & coarseMesh,
-                            ArrayOfSetsView< localIndex const > const & supports,
-                            integer const numComp )
-{
-  GEOSX_MARK_FUNCTION;
-
-  // Build support regions and tentative prolongation
-  ArrayOfSets< localIndex > const nodalConn = buildNodalConnectivity( fineMesh.nodeManager(), fineMesh.cellManager() );
-  arrayView1d< localIndex const > const coarseNodes = coarseMesh.nodeManager().getExtrinsicData< meshData::FineNodeLocalIndex >().toViewConst();
-  array1d< localIndex > const initPart = makeSeededPartition( nodalConn.toViewConst(), coarseNodes, supports );
-
-  // Construct the tentative prolongation, consuming the sparsity pattern
-  CRSMatrix< real64, globalIndex > localMatrix;
-  {
-    SparsityPattern< globalIndex > localPattern =
-      buildProlongationSparsity( fineMesh.nodeManager(), coarseMesh.nodeManager(), supports, numComp );
-    localMatrix.assimilate< parallelHostPolicy >( std::move( localPattern ) );
-  }
-
-  // Add initial unity values
-  arrayView1d< globalIndex const > const coarseLocalToGlobal = coarseMesh.nodeManager().localToGlobalMap();
-  forAll< parallelHostPolicy >( fineMesh.nodeManager().numOwnedObjects(),
-                                [=, localMatrix = localMatrix.toViewConstSizes()]( localIndex const inf )
-  {
-    if( initPart[inf] >= 0 )
-    {
-      real64 const value = 1.0;
-      for( integer ic = 0; ic < numComp; ++ic )
-      {
-        globalIndex const col = coarseLocalToGlobal[initPart[inf]] * numComp + ic;
-        localMatrix.addToRow< serialAtomic >( inf * numComp + ic, &col, &value, 1 );
-      }
-    }
-  } );
-
-  return localMatrix;
+  return msrsb::buildSupports( fineNodeToSubdomain.toViewConst(),
+                               coarse.cellManager().toDualRelation().toViewConst(),
+                               coarse.nodeManager().getExtrinsicData< meshData::FineNodeLocalIndex >(),
+                               fine.nodeManager().getExtrinsicData< meshData::CoarseNodeLocalIndex >(),
+                               supportBoundaryIndicator );
 }
 
 } // namespace node
@@ -313,24 +106,19 @@ buildSupports( multiscale::MeshLevel & fine,
   }();
 
   // Need to make nodal partition global and synced across ranks to have a consistent dual
-  array1d< globalIndex > & nodalPart =
-    fine.nodeManager().registerWrapper< meshData::NodalPartitionGlobalIndex::type >( meshData::NodalPartitionGlobalIndex::key() ).reference();
+  array1d< globalIndex > nodalPart( fine.nodeManager().size() );
+  meshUtils::ScopedDataRegistrar nodalPartReg( fine.nodeManager(), "nodalPartitionGlobalIndex", nodalPart );
+  forAll< parallelHostPolicy >( fine.nodeManager().numOwnedObjects(),
+                                [firstLocalNodeIndex = coarse.nodeManager().localToGlobalMap()[0],
+                                 nodalPart = nodalPart.toView(),
+                                 nodalPartLocal = nodalPartLocal.toView()]( localIndex const inf )
   {
-    globalIndex const firstLocalNodeIndex = coarse.nodeManager().localToGlobalMap()[0];
-    forAll< parallelHostPolicy >( fine.nodeManager().numOwnedObjects(),
-                                  [firstLocalNodeIndex,
-                                    nodalPart = nodalPart.toView(),
-                                    nodalPartLocal = nodalPartLocal.toView()]( localIndex const inf )
-    {
-      nodalPart[inf] = nodalPartLocal[inf] + firstLocalNodeIndex;
-    } );
-    string_array fieldNames;
-    fieldNames.emplace_back( meshData::NodalPartitionGlobalIndex::key() );
-    CommunicationTools::getInstance().synchronizeFields( fieldNames, fine.nodeManager(), fine.domain()->getNeighbors(), false );
-  }
+    nodalPart[inf] = nodalPartLocal[inf] + firstLocalNodeIndex;
+  } );
+  nodalPartReg.sync( *fine.domain() );
 
   // TODO remove debugging output
-  fine.writeNodeData( { meshData::NodalPartitionGlobalIndex::key() } );
+  fine.writeNodeData( { "nodalPartitionGlobalIndex" } );
 
   // Make an adjacency map of fine cells to nodal partitions
   ArrayOfSets< globalIndex > const cellToNodalPart =
@@ -348,17 +136,6 @@ buildSupports( multiscale::MeshLevel & fine,
   return supports;
 }
 
-CRSMatrix< real64, globalIndex >
-buildTentativeProlongation( multiscale::MeshLevel const & fineMesh,
-                            multiscale::MeshLevel const & coarseMesh,
-                            ArrayOfSetsView< localIndex const > const & supports,
-                            integer const numComp )
-{
-  // TODO
-  CRSMatrix< real64, globalIndex > prolongation;
-  return prolongation;
-}
-
 } // namespace cell
 
 } // namespace msrsb
@@ -372,7 +149,7 @@ void MsrsbLevelBuilder< LAI >::initializeCoarseLevel( LevelBuilderBase< LAI > & 
   m_numComp = fine.m_numComp;
   m_location = fine.m_location;
 
-  // Coarsen mesh
+  // Coarsen the mesh
   m_mesh.buildCoarseMesh( fine.mesh(), m_params.coarsening, m_params.boundarySets );
 
   // Write data back to GEOSX for visualization and debug
@@ -395,48 +172,59 @@ void MsrsbLevelBuilder< LAI >::initializeCoarseLevel( LevelBuilderBase< LAI > & 
                                  meshData::CoarseNodeGlobalIndex::key() } );
   }
 
-  MeshObjectManager const & coarseMgr = m_location == DofManager::Location::Node ? m_mesh.nodeManager() : m_mesh.cellManager();
-  MeshObjectManager const & fineMgr = m_location == DofManager::Location::Node ? fine.mesh().nodeManager() : fine.mesh().cellManager();
+  // For now, we only handle two types of basis functions - nodal and cell-centered - with specific algorithms.
+  // In future this should be refactored into an extensible hierarchy of basis constructors.
+  bool const isNodal = m_location == DofManager::Location::Node;
 
-  // Create a "fake" coarse matrix (no data, just correct sizes/comms)
-  localIndex const numLocalDof = coarseMgr.numOwnedObjects() * m_numComp;
-  m_matrix.createWithLocalSize( numLocalDof, numLocalDof, 0, fine.matrix().comm() );
+  MeshObjectManager const & coarseMgr = isNodal ? m_mesh.nodeManager() : m_mesh.cellManager();
+  MeshObjectManager const & fineMgr = isNodal ? fine.mesh().nodeManager() : fine.mesh().cellManager();
+  auto const buildSupports = isNodal ? msrsb::node::buildSupports : msrsb::cell::buildSupports;
 
-  // Build initial (tentative) prolongation operator
-  // Do this in a local scope so supports map does not outlive its usefulness
-  CRSMatrix< real64, globalIndex > localProlongation;
+  // Build support region definitions and construct global internal/boundary DoF sets
+  array1d< integer > supportBoundaryIndicators( fineMgr.size() );
+  ArrayOfSets< localIndex > const supports = buildSupports( fine.mesh(),
+                                                            m_mesh,
+                                                            m_params.boundarySets,
+                                                            supportBoundaryIndicators );
+  msrsb::makeGlobalDofLists( supportBoundaryIndicators,
+                             m_numComp,
+                             fineMgr.numOwnedObjects(),
+                             fine.matrix().ilower(),
+                             m_boundaryDof,
+                             m_interiorDof );
+
+  // Build initial (tentative) prolongation operator as a non-overlapping partitioning of points
+  array1d< localIndex > initPartArray; // for temporary storage, if needed
+  arrayView1d< localIndex const > const initPart = [&]
   {
-    array1d< integer > supportBoundaryIndicators( fineMgr.size() );
-
-    if( m_location == DofManager::Location::Node )
+    if( isNodal )
     {
-      ArrayOfSets< localIndex > const supports = msrsb::node::buildSupports( fine.mesh(),
-                                                                             m_mesh,
-                                                                             m_params.boundarySets,
-                                                                             supportBoundaryIndicators );
-      localProlongation = msrsb::node::buildTentativeProlongation( fine.mesh(),
-                                                                   m_mesh,
-                                                                   supports.toViewConst(),
-                                                                   m_numComp );
+      ArrayOfSets< localIndex > const nodalConn = msrsb::buildNodalConnectivity( fine.mesh().nodeManager(), fine.mesh().cellManager() );
+      arrayView1d< localIndex const > const coarseNodes = coarseMgr.getExtrinsicData< meshData::FineNodeLocalIndex >().toViewConst();
+      initPartArray = msrsb::makeSeededPartition( nodalConn.toViewConst(), coarseNodes, supports.toViewConst() );
+      return initPartArray.toViewConst();
     }
     else
     {
-      ArrayOfSets< localIndex > const supports = msrsb::cell::buildSupports( fine.mesh(),
-                                                                             m_mesh,
-                                                                             m_params.boundarySets,
-                                                                             supportBoundaryIndicators );
+      return fineMgr.getExtrinsicData< meshData::CoarseCellLocalIndex >();
     }
+  }();
 
-    msrsb::makeGlobalDofLists( supportBoundaryIndicators,
-                               m_numComp,
-                               fineMgr.numOwnedObjects(),
-                               fine.matrix().ilower(),
-                               m_boundaryDof,
-                               m_interiorDof );
-  }
+  // Convert the partitioning into an actual DoF-based local matrix
+  CRSMatrix< real64, globalIndex > const localProlongation =
+    msrsb::buildTentativeProlongation( fineMgr,
+                                       coarseMgr,
+                                       supports.toViewConst(),
+                                       initPart,
+                                       m_numComp );
 
+  // Assemble local pieces into a global prolongation operator and make restriction operator
   m_prolongation.create( localProlongation.toViewConst(), coarseMgr.numOwnedObjects() * m_numComp, fine.matrix().comm() );
   m_restriction = msrsb::makeRestriction( m_params, m_prolongation );
+
+  // Create a "fake" coarse matrix (no data, just correct sizes/comms), to be computed later
+  localIndex const numLocalDof = coarseMgr.numOwnedObjects() * m_numComp;
+  m_matrix.createWithLocalSize( numLocalDof, numLocalDof, 0, fine.matrix().comm() );
 }
 
 template< typename LAI >

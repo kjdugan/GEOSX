@@ -18,8 +18,8 @@
 
 #include "MeshUtils.hpp"
 
-#include "linearAlgebra/multiscale/MeshData.hpp"
-#include "linearAlgebra/multiscale/MeshObjectManager.hpp"
+#include "mesh/DomainPartition.hpp"
+#include "mesh/mpiCommunications/CommunicationTools.hpp"
 
 namespace geosx
 {
@@ -27,6 +27,13 @@ namespace multiscale
 {
 namespace meshUtils
 {
+
+void ScopedDataRegistrar::sync( DomainPartition & domain ) const
+{
+  array1d< string > fields;
+  fields.emplace_back( m_key );
+  CommunicationTools::getInstance().synchronizeFields( fields, m_manager, domain.getNeighbors(), false );
+}
 
 void copySets( ObjectManagerBase const & srcManager,
                string const & mapKey,

@@ -91,14 +91,6 @@ EXTRINSIC_MESH_DATA_TRAIT( CoarseNodeGlobalIndex,
                            NO_WRITE,
                            "Global index of the coarse scale node" );
 
-EXTRINSIC_MESH_DATA_TRAIT( NodalPartitionGlobalIndex,
-                           "nodalPartitionGlobalIndex",
-                           array1d< globalIndex >,
-                           -1,
-                           LEVEL_0,
-                           NO_WRITE,
-                           "Global index of the coarse node partition" );
-
 EXTRINSIC_MESH_DATA_TRAIT( FineNodeLocalIndex,
                            "fineNodeLocalIndex",
                            array1d< localIndex >,
@@ -106,14 +98,6 @@ EXTRINSIC_MESH_DATA_TRAIT( FineNodeLocalIndex,
                            LEVEL_0,
                            NO_WRITE,
                            "Local index of the fine scale node corresponding to a coarse node" );
-
-EXTRINSIC_MESH_DATA_TRAIT( NodeToCoarseSubdomain,
-                           "nodeToCoarseSubdomain",
-                           ArrayOfSets< globalIndex >,
-                           -1,
-                           NOPLOT,
-                           NO_WRITE,
-                           "Map of node to coarse subdomain global index (including boundaries)" );
 
 EXTRINSIC_MESH_DATA_TRAIT( CartesianIndex,
                            "cartesianIndex", // must be same as ElementSubRegionBase::viewKeyStruct::cartesianIndexString

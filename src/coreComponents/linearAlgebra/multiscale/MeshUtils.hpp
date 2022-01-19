@@ -25,10 +25,52 @@
 
 namespace geosx
 {
+
+class DomainPartition;
+
 namespace multiscale
 {
 namespace meshUtils
 {
+
+/**
+ * @brief Utility class to manage registration of temporary scope-bound data in the data repository.
+ *
+ * On construction, registers a wrapper for the given data container in the manager.
+ * On destruction, cleans up by removing a wrapper.
+ * As an additional benefit, provides a shortcut for parallel synchronization of data.
+ * Does NOT copy/hold the data.
+ */
+class ScopedDataRegistrar
+{
+public:
+
+  template< typename T >
+  ScopedDataRegistrar( ObjectManagerBase & manager, string key, T & data )
+  : m_manager( manager ),
+    m_key( std::move( key ) )
+  {
+    m_manager.registerWrapper( m_key, &data );
+  }
+
+  ScopedDataRegistrar( ScopedDataRegistrar const & ) = delete;
+  ScopedDataRegistrar( ScopedDataRegistrar && ) = delete;
+
+  ~ScopedDataRegistrar()
+  {
+    // For debugging only, do not delete the data for now
+#if 0
+    m_manager.deregisterWrapper( m_key );
+#endif
+  }
+
+  void sync( DomainPartition & domain ) const;
+
+private:
+
+  ObjectManagerBase & m_manager;
+  string const m_key;
+};
 
 template< typename T, typename U = T >
 void filterArray( arrayView1d< T const > const & src,
