@@ -52,18 +52,18 @@ makeSeededPartition( ArrayOfSetsView< localIndex const > const & connectivity,
  *        ("virtual" boundary subdomains, if included, must have negative indices)
  * @param subdomainToCoarseObject map of subdomains to adjacent coarse-scale objects (points).
  *        Does not need to include boundary subdomains.
- * @param fineObjectIndex (dense) map of coarse objects to corresponding fine objects
- * @param coarseObjectIndex (sparse) map of fine objects to corresponding coarse objects.
- *        Fine objects that do not map to coarse mesh must be marked with a negative values (e.g. -1).
+ * @param coarseObjectToSubdomain map of coarse-scale objects (points) to adjacent subdomains
+ *        (generally a transpose of @p subdomainToCoarseObject)
  * @param supportBoundaryIndicator auxiliary output array that marks points on global support boundary with a nonzero value (1).
  * @return a map of fine objects (points) to a list of coarse objects (points) to the support of which they belong
  */
 ArrayOfSets< localIndex >
 buildSupports( ArrayOfSetsView< localIndex const > const & fineObjectToSubdomain,
                ArrayOfSetsView< localIndex const > const & subdomainToCoarseObject,
-               arrayView1d< localIndex const > const & fineObjectIndex,
-               arrayView1d< localIndex const > const & coarseObjectIndex,
-               arrayView1d< integer > const & supportBoundaryIndicator );
+               ArrayOfSetsView< localIndex const > const & coarseObjectToSubdomain );
+
+array1d< integer >
+findGlobalSupportBoundary( ArrayOfSetsView< localIndex const > const & fineObjectToSubdomain );
 
 SparsityPattern< globalIndex >
 buildProlongationSparsity( MeshObjectManager const & fineManager,
@@ -80,7 +80,7 @@ buildTentativeProlongation( MeshObjectManager const & fineManager,
 
 void makeGlobalDofLists( arrayView1d< integer const > const & indicator,
                          integer const numComp,
-                         localIndex const numLocalNodes,
+                         localIndex const numLocalObjects,
                          globalIndex const firstLocalDof,
                          array1d< globalIndex > & boundaryDof,
                          array1d< globalIndex > & interiorDof );
@@ -117,15 +117,15 @@ void writeProlongation( Matrix const & prolongation,
   std::vector< string > bNames{ "X ", "Y ", "Z " };
   std::vector< string > cNames{ " x", " y", " z" };
 
-  globalIndex const numNodes = prolongation.numGlobalCols() / numComp;
-  int const labelWidth = static_cast< int >( std::log10( numNodes ) ) + 1;
+  globalIndex const numCoarsePoints = prolongation.numGlobalCols() / numComp;
+  int const labelWidth = static_cast< int >( std::log10( numCoarsePoints ) ) + 1;
 
   std::vector< arrayView3d< real64 > > views;
   std::vector< string > names;
 
-  for( globalIndex icn = 0; icn < numNodes; ++icn )
+  for( globalIndex cidx = 0; cidx < numCoarsePoints; ++cidx )
   {
-    string const name = GEOSX_FMT( "{}_P_{:{}}", prefix, icn, labelWidth );
+    string const name = GEOSX_FMT( "{}_P_{:{}}", prefix, cidx, labelWidth );
     auto & wrapper = fineManager.registerWrapper< array3d< real64 > >( name ).
       setDimLabels( 1, { bNames.begin(), bNames.begin() + numComp } ).
       setDimLabels( 2, { cNames.begin(), cNames.begin() + numComp } ).
@@ -141,7 +141,7 @@ void writeProlongation( Matrix const & prolongation,
   for( localIndex localRow = 0; localRow < prolongation.numLocalRows(); ++localRow )
   {
     globalIndex const globalRow = prolongation.ilower() + localRow;
-    localIndex const rowNode = localRow / numComp;
+    localIndex const rowObj = localRow / numComp;
     integer const rowComp = static_cast< integer >( localRow % numComp );
 
     localIndex const numValues = prolongation.rowLength( globalRow );
@@ -151,9 +151,9 @@ void writeProlongation( Matrix const & prolongation,
 
     for( localIndex i = 0; i < numValues; ++i )
     {
-      globalIndex const colNode = colIndices[i] / numComp;
+      globalIndex const colObj = colIndices[i] / numComp;
       integer const colComp = static_cast< integer >( colIndices[i] % numComp );
-      views[colNode]( rowNode, colComp, rowComp ) = values[i];
+      views[colObj]( rowObj, colComp, rowComp ) = values[i];
     }
   }
 

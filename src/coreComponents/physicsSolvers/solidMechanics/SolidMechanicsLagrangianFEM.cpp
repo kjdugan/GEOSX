@@ -891,7 +891,7 @@ void SolidMechanicsLagrangianFEM::setupSystem( DomainPartition & domain,
   localMatrix.assimilate< parallelDevicePolicy<> >( std::move( sparsityPattern ) );
 
   LinearSolverParameters & linParams = m_linearSolverParameters.get();
-  if( !m_precond )//&& linParams.solverType != LinearSolverParameters::SolverType::direct )
+  if( !m_precond && linParams.solverType != LinearSolverParameters::SolverType::direct )
   {
     if( linParams.preconditionerType == LinearSolverParameters::PreconditionerType::multiscale )
     {

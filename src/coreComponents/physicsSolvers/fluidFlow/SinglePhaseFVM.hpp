@@ -61,6 +61,7 @@ public:
   using BASE::m_localMatrix;
   using BASE::m_linearSolverParameters;
   using BASE::m_nonlinearSolverParameters;
+  using BASE::m_precond;
 
   // Aliasing public/protected members/methods of FlowSolverBase so we don't
   // have to use this->member etc.
@@ -199,6 +200,10 @@ public:
                   arrayView1d< real64 > const & localRhs ) const override;
 
   virtual void initializePreSubGroups() override;
+
+protected:
+
+  virtual void postProcessInput() override final;
 
 private:
 

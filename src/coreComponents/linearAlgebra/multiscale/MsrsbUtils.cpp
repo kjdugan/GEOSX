@@ -91,8 +91,7 @@ makeSeededPartition( ArrayOfSetsView< localIndex const > const & connectivity,
   } );
 
   // Use AoA with 1 array for its atomic emplace capability
-  // TODO: this might not be efficient due to thread contention;
-  //       may need to use a serial policy instead (benchmark me)
+  // TODO: this might not be efficient due to thread contention; may need to use a serial policy instead (benchmark me)
   ArrayOfArrays< localIndex > unassigned( 1, 12 * numNodes );
   array1d< localIndex > newPart;
 
@@ -186,49 +185,38 @@ makeSeededPartition( ArrayOfSetsView< localIndex const > const & connectivity,
 ArrayOfSets< localIndex >
 buildSupports( ArrayOfSetsView< localIndex const > const & fineObjectToSubdomain,
                ArrayOfSetsView< localIndex const > const & subdomainToCoarseObject,
-               arrayView1d< localIndex const > const & fineObjectIndex,
-               arrayView1d< localIndex const > const & coarseObjectIndex,
-               arrayView1d< integer > const & supportBoundaryIndicator )
+               ArrayOfSetsView< localIndex const > const & coarseObjectToSubdomain )
 {
   GEOSX_MARK_FUNCTION;
 
   // Algorithm:
   // Loop over all fine nodes.
-  // - If node is a coarse node, immediately assign to its own support.
-  //   Otherwise, get a list of adjacent coarse cells.
+  // - Get a list of adjacent coarse cells.
   // - If list is length 1, assign the node to supports of all coarse nodes adjacent to that coarse cell.
   //   Otherwise, collect a unique list of candidate coarse nodes by visiting them through coarse cells.
-  // - For each candidate, check that fine node's subdomain list is included in the candidates subdomain list.
+  // - For each candidate, check that fine node's subdomain list is included in the candidate's subdomain list.
   //   Otherwise, discard the candidate.
   // The first two cases could be handled by the last one; they are just an optimization that avoids some checks.
   // All above is done twice: once to count (or get upper bound on) row lengths, once to actually build supports.
   // For the last case, don't need to check inclusion when counting, just use number of candidates as upper bound.
 
   // Count row lengths and fill boundary indicators
-  supportBoundaryIndicator.setValues< parallelHostPolicy >( 0 );
   array1d< localIndex > rowLengths( fineObjectToSubdomain.size() );
   forAll< parallelHostPolicy >( fineObjectToSubdomain.size(),
-                                [=, rowLengths = rowLengths.toView(),
-                                 supportBoundaryIndicator = supportBoundaryIndicator.toView()]( localIndex const inf )
+                                [=, rowLengths = rowLengths.toView()]( localIndex const fidx )
   {
-    if( coarseObjectIndex[inf] >= 0 )
+    if( fineObjectToSubdomain.sizeOfSet( fidx ) == 1 )
     {
-      rowLengths[inf] = 1;
-      supportBoundaryIndicator[inf] = 1;
-    }
-    else if( fineObjectToSubdomain.sizeOfSet( inf ) == 1 )
-    {
-      rowLengths[inf] = subdomainToCoarseObject.sizeOfSet( fineObjectToSubdomain( inf, 0 ) );
+      rowLengths[fidx] = subdomainToCoarseObject.sizeOfSet( fineObjectToSubdomain( fidx, 0 ) );
     }
     else
     {
-      localIndex numCoarseNodes = 0;
-      meshUtils::forUniqueNeighbors< 256 >( inf, fineObjectToSubdomain, subdomainToCoarseObject, [&]( localIndex )
+      localIndex numCoarseObjects = 0;
+      meshUtils::forUniqueNeighbors< 256 >( fidx, fineObjectToSubdomain, subdomainToCoarseObject, [&]( localIndex )
       {
-        ++numCoarseNodes;
+        ++numCoarseObjects;
       } );
-      rowLengths[inf] = numCoarseNodes;
-      supportBoundaryIndicator[inf] = 1;
+      rowLengths[fidx] = numCoarseObjects;
     }
   } );
 
@@ -238,32 +226,40 @@ buildSupports( ArrayOfSetsView< localIndex const > const & fineObjectToSubdomain
 
   // Fill the map
   forAll< parallelHostPolicy >( fineObjectToSubdomain.size(),
-                                [=, supports = supports.toView()]( localIndex const inf )
+                                [=, supports = supports.toView()]( localIndex const fidx )
   {
-    if( coarseObjectIndex[inf] >= 0 )
+    if( fineObjectToSubdomain.sizeOfSet( fidx ) == 1 )
     {
-      supports.insertIntoSet( inf, coarseObjectIndex[inf] );
-    }
-    else if( fineObjectToSubdomain.sizeOfSet( inf ) == 1 )
-    {
-      arraySlice1d< localIndex const > const coarseNodes = subdomainToCoarseObject[fineObjectToSubdomain( inf, 0 )];
-      supports.insertIntoSet( inf, coarseNodes.begin(), coarseNodes.end() );
+      arraySlice1d< localIndex const > const coarseObjects = subdomainToCoarseObject[fineObjectToSubdomain( fidx, 0 )];
+      supports.insertIntoSet( fidx, coarseObjects.begin(), coarseObjects.end() );
     }
     else
     {
-      arraySlice1d< localIndex const > const fsubs = fineObjectToSubdomain[inf];
-      meshUtils::forUniqueNeighbors< 256 >( inf, fineObjectToSubdomain, subdomainToCoarseObject, [&]( localIndex const inc )
+      arraySlice1d< localIndex const > const fsubs = fineObjectToSubdomain[fidx];
+      meshUtils::forUniqueNeighbors< 256 >( fidx, fineObjectToSubdomain, subdomainToCoarseObject, [&]( localIndex const cidx )
       {
-        arraySlice1d< localIndex const > const csubs = fineObjectToSubdomain[fineObjectIndex[inc]];
+        arraySlice1d< localIndex const > const csubs = coarseObjectToSubdomain[cidx];
         if( std::includes( csubs.begin(), csubs.end(), fsubs.begin(), fsubs.end() ) )
         {
-          supports.insertIntoSet( inf, inc );
+          supports.insertIntoSet( fidx, cidx );
         }
       } );
     }
   } );
 
   return supports;
+}
+
+array1d< integer >
+findGlobalSupportBoundary( ArrayOfSetsView< localIndex const > const & fineObjectToSubdomain )
+{
+  array1d< integer > supportBoundaryIndicator( fineObjectToSubdomain.size() );
+  forAll< parallelHostPolicy >( fineObjectToSubdomain.size(),
+                                [=, supportBoundaryIndicator = supportBoundaryIndicator.toView()]( localIndex const fidx )
+  {
+    supportBoundaryIndicator[fidx] = fineObjectToSubdomain.sizeOfSet( fidx ) > 1;
+  } );
+  return supportBoundaryIndicator;
 }
 
 SparsityPattern< globalIndex >
@@ -344,14 +340,14 @@ buildTentativeProlongation( MeshObjectManager const & fineManager,
 
 void makeGlobalDofLists( arrayView1d< integer const > const & indicator,
                          integer const numComp,
-                         localIndex const numLocalNodes,
+                         localIndex const numLocalObjects,
                          globalIndex const firstLocalDof,
                          array1d< globalIndex > & boundaryDof,
                          array1d< globalIndex > & interiorDof )
 {
-  boundaryDof.reserve( numLocalNodes * numComp );
-  interiorDof.reserve( numLocalNodes * numComp );
-  forAll< serialPolicy >( numLocalNodes, [&]( localIndex const inf )
+  boundaryDof.reserve( numLocalObjects * numComp );
+  interiorDof.reserve( numLocalObjects * numComp );
+  forAll< serialPolicy >( numLocalObjects, [&]( localIndex const inf )
   {
     globalIndex const globalDof = firstLocalDof + inf * numComp;
     if( indicator[inf] )

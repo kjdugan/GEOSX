@@ -86,7 +86,7 @@ findCoarseNodesByDualPartition( MeshObjectManager::MapViewConst const & nodeToDu
 
   // Identify "features" (groups of skeleton nodes with the same subdomain adjacency)
   array1d< localIndex > const featureIndex( nodeToDual.size() );
-  featureIndex.setValues< serialPolicy >( -1 );
+  featureIndex.setValues< parallelHostPolicy >( -1 );
 
   ArrayOfArrays< localIndex > featureNodes;
   featureNodes.reserve( skelNodes.size() ); // overallocate to avoid reallocation

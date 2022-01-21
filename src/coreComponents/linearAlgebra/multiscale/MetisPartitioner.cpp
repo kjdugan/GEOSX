@@ -101,14 +101,8 @@ localIndex MetisPartitioner::generate( multiscale::MeshLevel const & mesh,
   // Special handling for another trivial case (to avoid METIS problems)
   if( numPart == numCells )
   {
-    localIndex count = 0;
-    forAll< serialPolicy >( mesh.cellManager().size(), [&]( localIndex const i )
-    {
-      if( cellGhostRank[i] < 0 )
-      {
-        partition[i] = count++;
-      }
-    } );
+    partition.setValues< parallelHostPolicy >( 1 );
+    RAJA::exclusive_scan_inplace< parallelHostPolicy >( partition, RAJA::operators::plus< localIndex >{} );
     return numPart;
   }
 

@@ -153,7 +153,7 @@ localIndex assignCellLocalIndices( ElementRegionManager & elemManager,
   // Assign new local indices s.t. locally owned objects come first, followed by ghosted ones.
   elemManager.forElementSubRegions( regions, [&]( localIndex, ElementSubRegionBase & subRegion )
   {
-    // Allocate a element-based field on the GEOSX mesh that will keep a mapping to new cell local indices
+    // Allocate an element-based field on the GEOSX mesh that will keep a mapping to new cell local indices
     arrayView1d< localIndex > const cellLocalIndex = subRegion.getReference< array1d< localIndex > >( localIndexKey ).toView();
     arrayView1d< globalIndex const > const cellGlobalIndex = subRegion.getReference< array1d< globalIndex > >( globalIndexKey ).toViewConst();
 

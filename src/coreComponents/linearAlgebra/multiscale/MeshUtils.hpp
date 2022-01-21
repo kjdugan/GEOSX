@@ -291,7 +291,7 @@ void forUniqueNeighborValues( localIndex const locIdx,
                               VAL_PRED const & pred,
                               FUNC && func )
 {
-  using T = std::remove_cv_t< std::remove_reference_t< decltype( valueFunc( localIndex {} ) ) >>;
+  using T = std::remove_cv_t< std::remove_reference_t< decltype( valueFunc( localIndex{} ) ) >>;
   T nbrValues[MAX_NEIGHBORS];
   integer numValues = 0;
   for( localIndex const nbrIdx : neighbors[locIdx] )
@@ -370,6 +370,49 @@ buildFineObjectToSubdomainMap( MeshObjectManager const & fineObjectManager,
   } );
 
   return objectToSubdomain;
+}
+
+template< typename INDEX_TYPE >
+ArrayOfSets< INDEX_TYPE >
+addBoundarySubdomains( MeshObjectManager const & fineObjectManager,
+                       ArrayOfSetsView< INDEX_TYPE const > const & inputMap,
+                       arrayView1d< string const > const & boundaryObjectSets )
+{
+  array1d< localIndex > rowCounts( fineObjectManager.size() );
+  forAll< parallelHostPolicy >( fineObjectManager.size(), [=, rowCounts = rowCounts.toView()]( localIndex const objIdx )
+  {
+    rowCounts[objIdx] = inputMap.sizeOfSet( objIdx );
+  } );
+  for( string const & setName: boundaryObjectSets )
+  {
+    SortedArrayView< localIndex const > const set = fineObjectManager.getSet( setName ).toViewConst();
+    forAll< parallelHostPolicy >( set.size(), [=, rowCounts = rowCounts.toView()]( localIndex const i )
+    {
+      ++rowCounts[set[i]];
+    } );
+  }
+
+  // Resize from row lengths
+  ArrayOfSets< INDEX_TYPE > outputMap;
+  outputMap.template resizeFromCapacities< parallelHostPolicy >( rowCounts.size(), rowCounts.data() );
+
+  // Fill the map
+  INDEX_TYPE numBoundaries = 0;
+  for( string const & setName: boundaryObjectSets )
+  {
+    ++numBoundaries;
+    SortedArrayView< localIndex const > const set = fineObjectManager.getSet( setName ).toViewConst();
+    forAll< parallelHostPolicy >( set.size(), [=, outputMap = outputMap.toView()]( localIndex const i )
+    {
+      outputMap.insertIntoSet( set[i], -numBoundaries );
+    } );
+  }
+  forAll< parallelHostPolicy >( fineObjectManager.size(), [=, outputMap = outputMap.toView()]( localIndex const objIdx )
+  {
+    outputMap.insertIntoSet( objIdx, inputMap[objIdx].begin(), inputMap[objIdx].end() );
+  } );
+
+  return outputMap;
 }
 
 /**
