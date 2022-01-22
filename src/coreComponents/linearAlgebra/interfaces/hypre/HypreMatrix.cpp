@@ -1279,17 +1279,21 @@ void HypreMatrix::write( string const & filename,
     {
       int const rank = MpiWrapper::commRank( comm() );
 
+      globalIndex const numRows = numGlobalRows();
+      globalIndex const numCols = numGlobalCols();
+      globalIndex const numNonzeros = numGlobalNonzeros();
+
       // Write MatrixMarket header
       if( rank == 0 )
       {
         std::ofstream os( filename );
         GEOSX_ERROR_IF( !os, GEOSX_FMT( "Unable to open file for writing: {}", filename ) );
         os << "%%MatrixMarket matrix coordinate real general\n";
-        os << GEOSX_FMT( "{} {} {}\n", numGlobalRows(), numGlobalCols(), numGlobalNonzeros() );
+        os << GEOSX_FMT( "{} {} {}\n", numRows, numCols, numNonzeros );
       }
 
       // Write matrix values
-      if( numGlobalRows() > 0 && numGlobalCols() > 0 )
+      if( numRows > 0 && numCols > 0 )
       {
         // Copy distributed parcsr matrix in a local CSR matrix on every process with at least one row
         // Warning: works for a parcsr matrix that is smaller than 2^31-1
@@ -1311,7 +1315,7 @@ void HypreMatrix::write( string const & filename,
             for( HYPRE_Int k = csr.rowptr[i]; k < csr.rowptr[i + 1]; k++ )
             {
               // MatrixMarket row/col indices are 1-based
-              GEOSX_FMT_TO( str, sizeof( str ), "{} {} {.16e}\n", i + 1, csr.colind[k] + 1, csr.values[k] );
+              GEOSX_FMT_TO( str, sizeof( str ), "{} {} {:.16e}\n", i + 1, csr.colind[k] + 1, csr.values[k] );
               os << str;
             }
           }
