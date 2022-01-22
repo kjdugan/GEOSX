@@ -9,9 +9,9 @@
       xCoords="{ 0, 100 }"
       yCoords="{ 0, 100 }"
       zCoords="{ 0, 100 }"
-      nx="{ 8 }"
-      ny="{ 8 }"
-      nz="{ 8 }"
+      nx="{ 32 }"
+      ny="{ 32 }"
+      nz="{ 32 }"
       cellBlockNames="{ hex }"/>
   </Mesh>
 
@@ -101,6 +101,6 @@
   <Outputs>
     <VTK
       name="vtkOutput"
-      plotFileRoot="cartesian_3d"/>
+      plotFileRoot="cube_mech"/>
   </Outputs>
 </Problem>

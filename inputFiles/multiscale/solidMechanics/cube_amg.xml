@@ -21,16 +21,14 @@
         newtonMaxIter="2"
         lineSearchAction="None"
         lineSearchMaxCuts="1"
-        maxTimeStepCuts="1"
-      />
+        maxTimeStepCuts="1"/>
       <LinearSolverParameters
         solverType="gmres"
         krylovTol="1e-8"
         krylovMaxIter="500"
         preconditionerType="amg"
         amgSmootherType="l1sgs"
-        logLevel="1">
-      </LinearSolverParameters>
+        logLevel="1"/>
     </SolidMechanicsLagrangianSSLE>
 
   </Solvers>

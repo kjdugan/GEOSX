@@ -111,12 +111,16 @@ buildCellSupports( multiscale::MeshLevel const & fine,
       meshUtils::buildFineObjectToSubdomainMap( fine.nodeManager(),
                                                 fine.cellManager().getExtrinsicData< meshData::CoarseCellLocalIndex >(),
                                                 boundaryNodeSets );
+    ArrayOfSets< localIndex > const coarseNodeToCellSubdomain =
+      meshUtils::addBoundarySubdomains( coarse.nodeManager(),
+                                        coarse.nodeManager().toDualRelation(),
+                                        boundaryNodeSets );
 
     // Unfortunately, we need nodal supports (in order to limit nodal partition growth).
     ArrayOfSets< localIndex > const nodalSupports =
       msrsb::buildSupports( fineNodeToCellSubdomain.toViewConst(),
                             coarse.cellManager().toDualRelation(),
-                            coarse.nodeManager().toDualRelation() );
+                            coarseNodeToCellSubdomain.toViewConst() );
 
     return msrsb::makeSeededPartition( nodalConn.toViewConst(),
                                        coarse.nodeManager().getExtrinsicData< meshData::FineNodeLocalIndex >(),
@@ -335,6 +339,7 @@ integer iterateBasis( Matrix const & jacobiMatrix,
   {
     if( debugLevel >= minDebugLevel )
     {
+      GEOSX_MARK_SCOPE( writeProlongationMatrix );
       prolongation.write( GEOSX_FMT( "{}_P_{}.mtx", name, suffix ), LAIOutputFormat::MATRIX_MARKET );
     }
   };
@@ -426,8 +431,9 @@ void MsrsbLevelBuilder< LAI >::compute( Matrix const & fineMatrix )
                                 m_name,
                                 m_prolongation );
 
-  if( m_params.debugLevel >= 5 )
+  if( m_lastNumIter > 1 && m_params.debugLevel >= 5 )
   {
+    GEOSX_MARK_SCOPE( plotBasis );
     writeProlongationForDebug();
   }
 
@@ -449,8 +455,8 @@ void MsrsbLevelBuilder< LAI >::compute( Matrix const & fineMatrix )
 
   if( m_params.debugLevel >= 4 )
   {
-    fineMatrix.write( m_name + "_fine.mtx", LAIOutputFormat::MATRIX_MARKET );
-    m_matrix.write( m_name + "_coarse.mtx", LAIOutputFormat::MATRIX_MARKET );
+    GEOSX_MARK_SCOPE( writeLevelMatrix );
+    m_matrix.write( m_name + ".mtx", LAIOutputFormat::MATRIX_MARKET );
   }
 }
 

@@ -9,20 +9,20 @@
   <Solvers
     gravityVector="{ 0.0, 0.0, 0.0 }">
 
-    <SolidMechanicsLagrangianSSLE
-      name="mechSolver"
-      timeIntegrationOption="QuasiStatic"
-      discretization="FE1"
-      logLevel="0"
-      targetRegions="{ region }"
-      solidMaterialNames="{ rock }">
+    <SinglePhaseFVM
+      name="flowSolver"
+      logLevel="1"
+      discretization="singlePhaseTPFA"
+      fluidNames="{ water }"
+      solidNames="{ rock }"
+      permeabilityNames="{ rockPerm }"
+      targetRegions="{ region }">
       <NonlinearSolverParameters
         newtonTol="1e-2"
         newtonMaxIter="2"
         lineSearchAction="None"
         lineSearchMaxCuts="1"
-        maxTimeStepCuts="1"
-      />
+        maxTimeStepCuts="1"/>
       <LinearSolverParameters
         solverType="gmres"
         krylovTol="1e-8"
@@ -40,7 +40,7 @@
           coarseType="direct">
           <Coarsening
             partitionType="cartesian"
-            ratio="{ 4, 4, 4 }"
+            ratio="{ 5, 5, 5 }"
             minLocalDof="0"
             minGlobalDof="2000">
             <Metis
@@ -55,7 +55,7 @@
             checkFrequency="5"/>
         </Multiscale>
       </LinearSolverParameters>
-    </SolidMechanicsLagrangianSSLE>
+    </SinglePhaseFVM>
 
   </Solvers>
 
